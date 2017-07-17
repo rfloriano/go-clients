@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 
+	"strconv"
+
 	"github.com/vtex/go-clients/clients"
 	"gopkg.in/h2non/gentleman.v1"
 	"gopkg.in/h2non/gentleman.v1/plugins/headers"
-	"strconv"
 )
 
 type Options struct {
@@ -28,6 +29,7 @@ type VBase interface {
 	ListFiles(bucket string, options *Options) (*FileListResponse, string, error)
 	ListAllFiles(bucket, prefix string) (*FileListResponse, string, error)
 	DeleteFile(bucket, path string) error
+	DeleteAllFiles(bucket string) error
 }
 
 // Client is a struct that provides interaction with workspaces
@@ -189,7 +191,17 @@ func (cl *Client) ListAllFiles(bucket, prefix string) (*FileListResponse, string
 // DeleteFile deletes a file from the workspace
 func (cl *Client) DeleteFile(bucket, path string) error {
 	_, err := cl.http.Delete().
-		AddPath(fmt.Sprintf(pathToFile, bucket, path)).Send()
+		AddPath(fmt.Sprintf(pathToFile, bucket, path)).
+		Send()
+
+	return err
+}
+
+// DeleteAllFiles deletes all files from the specificed bucket
+func (cl *Client) DeleteAllFiles(bucket string) error {
+	_, err := cl.http.Delete().
+		AddPath(fmt.Sprintf(pathToFileList, bucket)).
+		Send()
 
 	return err
 }

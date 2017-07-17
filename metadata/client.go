@@ -32,6 +32,7 @@ type Metadata interface {
 	SaveAll(bucket string, data map[string]interface{}) (string, error)
 	DoAll(bucket string, patch MetadataPatchRequest) error
 	Delete(bucket, key string) (bool, error)
+	DeleteAll(bucket string) error
 	ListAllConflicts(bucket string) ([]*MetadataConflict, error)
 	ResolveConflicts(bucket string, patch MetadataPatchRequest) error
 }
@@ -195,6 +196,14 @@ func (cl *Client) Delete(bucket, key string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (cl *Client) DeleteAll(bucket string) error {
+	_, err := cl.http.Delete().
+		AddPath(fmt.Sprintf(metadataPath, bucket)).
+		Send()
+
+	return err
 }
 
 func (cl *Client) DoAll(bucket string, patch MetadataPatchRequest) error {
