@@ -14,8 +14,8 @@ import (
 type Apps interface {
 	GetApp(app, parentID string) (*ActiveApp, string, error)
 	ListFiles(app, parentID string) (*FileList, string, error)
-	GetFile(app, parentID, path string) (*gentleman.Response, string, error)
-	GetBundle(app, parentID, rootFolder string) (io.Reader, string, error)
+	GetFile(app, parentID, path string) (io.ReadCloser, string, error)
+	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
 	GetDependencies() (map[string][]string, string, error)
 }
 
@@ -74,7 +74,7 @@ func (cl *AppsClient) ListFiles(app, parentID string) (*FileList, string, error)
 }
 
 // GetFile gets an installed app's file as read closer
-func (cl *AppsClient) GetFile(app, parentID string, path string) (*gentleman.Response, string, error) {
+func (cl *AppsClient) GetFile(app, parentID string, path string) (io.ReadCloser, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToFile, app, path)).
 		Use(addParent(parentID)).
@@ -86,7 +86,7 @@ func (cl *AppsClient) GetFile(app, parentID string, path string) (*gentleman.Res
 	return res, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *AppsClient) GetBundle(app, parentID, rootFolder string) (io.Reader, string, error) {
+func (cl *AppsClient) GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToBundle, app, rootFolder)).
 		Use(addParent(parentID)).

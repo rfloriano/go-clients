@@ -13,8 +13,8 @@ import (
 type Registry interface {
 	GetApp(id string) (*PublishedApp, string, error)
 	ListFiles(id string) (*FileList, string, error)
-	GetFile(id, path string) (*gentleman.Response, string, error)
-	GetBundle(id, rootFolder string) (io.Reader, string, error)
+	GetFile(id, path string) (io.ReadCloser, string, error)
+	GetBundle(id, rootFolder string) (io.ReadCloser, string, error)
 }
 
 // Client is a struct that provides interaction with apps
@@ -83,7 +83,7 @@ func (cl *RegistryClient) ListFiles(id string) (*FileList, string, error) {
 	return &l, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *RegistryClient) GetFile(id, path string) (*gentleman.Response, string, error) {
+func (cl *RegistryClient) GetFile(id, path string) (io.ReadCloser, string, error) {
 	name, version, err := getNameVersion(id)
 	if err != nil {
 		return nil, "", err
@@ -99,7 +99,7 @@ func (cl *RegistryClient) GetFile(id, path string) (*gentleman.Response, string,
 	return res, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *RegistryClient) GetBundle(id, rootFolder string) (io.Reader, string, error) {
+func (cl *RegistryClient) GetBundle(id, rootFolder string) (io.ReadCloser, string, error) {
 	name, version, err := getNameVersion(id)
 	if err != nil {
 		return nil, "", err
