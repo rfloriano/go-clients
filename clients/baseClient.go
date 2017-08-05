@@ -9,7 +9,6 @@ import (
 
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"gopkg.in/h2non/gentleman.v1"
 	"gopkg.in/h2non/gentleman.v1/context"
 	"gopkg.in/h2non/gentleman.v1/plugin"
@@ -21,26 +20,27 @@ import (
 
 const HeaderETag = "ETag"
 
+type RequestRecorder interface {
+	Record(req *http.Request, res *http.Response, responseTime time.Duration)
+	EnableTrace() bool
+}
+
 type Config struct {
-	Account        string
-	Workspace      string
-	Region         string
-	Endpoint       string
-	AuthToken      string
-	AuthFunc       func() string
-	UserAgent      string
-	RequestContext RequestContext
-	Timeout        time.Duration
-	Transport      http.RoundTripper
+	Account   string
+	Workspace string
+	Region    string
+	Endpoint  string
+	AuthToken string
+	AuthFunc  func() string
+	UserAgent string
+	Recorder  RequestRecorder
+	Timeout   time.Duration
+	Transport http.RoundTripper
 }
 
 func CreateClient(service string, config *Config, workspaceBound bool) *gentleman.Client {
 	if config == nil {
 		panic("config cannot be <nil>")
-	}
-
-	if config.RequestContext == nil {
-		panic("config.RequestContext cannot be <nil>")
 	}
 
 	if config.Timeout <= 0 {
@@ -50,9 +50,10 @@ func CreateClient(service string, config *Config, workspaceBound bool) *gentlema
 	cl := gentleman.New().
 		Use(timeout.Request(config.Timeout)).
 		Use(headers.Set("User-Agent", config.UserAgent)).
-		Use(responseErrors()).
-		Use(recordHeaders(config.RequestContext)).
-		Use(traceRequest(config.RequestContext))
+		Use(responseErrors())
+	if config.Recorder != nil {
+		cl = cl.Use(requestRecorder(config.Recorder))
+	}
 
 	if url := endpoint(service, config); url != "" {
 		cl = cl.BaseURL(url)
@@ -104,68 +105,25 @@ func responseErrors() plugin.Plugin {
 	})
 }
 
-func recordHeaders(reqCtx RequestContext) plugin.Plugin {
-	return plugin.NewResponsePlugin(func(c *context.Context, h context.Handler) {
-		reqCtx.Parse(c.Response.Header)
-		h.Next(c)
-	})
-}
-
-func traceRequest(reqCtx RequestContext) plugin.Plugin {
-	const startTime = "startTime"
+func requestRecorder(recorder RequestRecorder) plugin.Plugin {
+	const startTimeKey = "startTime"
 
 	p := plugin.New()
-	if reqCtx.isTraceEnabled() {
-		p.SetHandler("before dial", func(c *context.Context, h context.Handler) {
-			c.Request.Header.Set(enableTraceHeader, "true")
-			c.Set(startTime, time.Now())
+	p.SetHandlers(plugin.Handlers{
+		"before dial": func(c *context.Context, h context.Handler) {
+			if recorder.EnableTrace() {
+				c.Request.Header.Set(enableTraceHeader, "true")
+			}
+			c.Set(startTimeKey, time.Now())
 			h.Next(c)
-		})
-		p.SetHandler("response", func(c *context.Context, h context.Handler) {
-			tree := newCallTree(c.Request, c.Response, c.Get(startTime).(time.Time))
-			reqCtx.UpdateS(traceHeader, func(current string) string {
-				var traces []*CallTree
-				if err := json.Unmarshal([]byte(current), &traces); err != nil || current == "" {
-					traces = []*CallTree{}
-				}
-				traces = append(traces, tree)
-
-				js, _ := json.Marshal(traces)
-				return string(js)
-			})
+		},
+		"response": func(c *context.Context, h context.Handler) {
+			responseTime := time.Since(c.Get(startTimeKey).(time.Time))
+			recorder.Record(c.Request, c.Response, responseTime)
 			h.Next(c)
-		})
-	}
+		},
+	})
 	return p
-}
-
-type CallTree struct {
-	Call     string      `json:"call"`
-	Status   int         `json:"status"`
-	Cache    string      `json:"cache"`
-	Time     int64       `json:"time"`
-	Children []*CallTree `json:"children,omitempty"`
-}
-
-func newCallTree(req *http.Request, res *http.Response, start time.Time) *CallTree {
-	resh := res.Header.Get(traceHeader)
-	var children []*CallTree
-	if err := json.Unmarshal([]byte(resh), &children); err != nil && resh != "" {
-		logrus.WithError(err).Error("Failed to unmarshal call trace")
-	}
-
-	cache := "miss"
-	if _, ok := res.Header["X-From-Cache"]; ok {
-		cache = "hit"
-	}
-
-	return &CallTree{
-		Call:     req.Method + " " + req.URL.String(),
-		Time:     time.Now().Sub(start).Nanoseconds() / int64(time.Millisecond),
-		Status:   res.StatusCode,
-		Cache:    cache,
-		Children: children,
-	}
 }
 
 func endpoint(service string, config *Config) string {
