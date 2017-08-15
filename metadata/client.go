@@ -268,7 +268,7 @@ func (cl *Client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
 }
 
 func (cl *Client) ResolveConflicts(bucket string, patch MetadataPatchRequest) error {
-	_, err := cl.http.Post().
+	_, err := cl.http.Patch().
 		AddPath(fmt.Sprintf(conflictsPath, bucket)).
 		JSON(patch).
 		Send()
