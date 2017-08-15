@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/vtex/go-clients/clients"
+	"gopkg.in/h2non/gentleman.v1"
 )
 
 type Colossus interface {
