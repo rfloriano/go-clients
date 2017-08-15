@@ -3,9 +3,9 @@ package colossus
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 
 	"github.com/vtex/go-clients/clients"
-	"gopkg.in/h2non/gentleman.v1"
 )
 
 type Colossus interface {
@@ -13,6 +13,7 @@ type Colossus interface {
 	SendEventB(sender, subject, key string, body []byte) error
 	SendLogJ(sender, subject, level string, body interface{}) error
 	SendLogB(sender, subject, level string, body []byte) error
+	SendEvent(sender, subject, key string, body interface{}, extraHeaders http.Header) error
 }
 
 type Client struct {
@@ -30,9 +31,17 @@ const (
 )
 
 func (cl *Client) SendEventJ(sender, subject, key string, body interface{}) error {
-	_, err := cl.http.Post().
-		AddPath(fmt.Sprintf(eventPath, sender, subject, key)).
-		JSON(body).Send()
+	return cl.SendEvent(sender, subject, key, body, nil)
+}
+
+func (cl *Client) SendEvent(sender, subject, key string, body interface{}, extraHeaders http.Header) error {
+	request := cl.http.Post().AddPath(fmt.Sprintf(eventPath, sender, subject, key)).JSON(body)
+	for k, vs := range extraHeaders {
+		for _, v := range vs {
+			request.AddHeader(k, v)
+		}
+	}
+	_, err := request.Send()
 
 	return err
 }
