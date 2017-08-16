@@ -24,10 +24,7 @@ func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
 	}
 
 	return &IOHeadersRecorder{
-		logFields: logrus.Fields{
-			"code":   "io_headers_recorder",
-			"parent": requestLogFields(parent),
-		},
+		parentLogFields: requestLogFields(parent),
 		responseHeaders: http.Header{},
 		enableTrace:     enableTrace,
 		callTrace:       callTrace,
@@ -37,7 +34,7 @@ func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
 type IOHeadersRecorder struct {
 	mu sync.RWMutex
 
-	logFields       logrus.Fields
+	parentLogFields logrus.Fields
 	responseHeaders http.Header
 	enableTrace     bool
 	callTrace       []*CallTree
@@ -50,8 +47,7 @@ func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, respon
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.written {
-		logrus.WithFields(r.logFields).
-			WithField("request", requestLogFields(req)).
+		r.log("headers_record_after_written", req, nil).
 			Warn("Request recorded after parent response already written")
 	}
 
@@ -60,7 +56,7 @@ func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, respon
 	}
 
 	if r.enableTrace {
-		r.callTrace = append(r.callTrace, newCallTree(req, res, responseTime))
+		r.recordChildCallTree(req, res, responseTime)
 	}
 }
 
@@ -81,12 +77,48 @@ func (r *IOHeadersRecorder) AddResponseHeaders(out http.Header) {
 	if r.enableTrace {
 		trace, err := json.Marshal(r.callTrace)
 		if err != nil {
-			logrus.WithError(err).
-				WithFields(r.logFields).
+			r.log("call_trace_marshal_error", nil, err).
 				Error("Failed to marshall call trace")
 		}
 		out.Set(traceHeader, string(trace))
 	}
+}
+
+func (r *IOHeadersRecorder) recordChildCallTree(req *http.Request, res *http.Response, responseTime time.Duration) {
+	resh := res.Header.Get(traceHeader)
+	var children []*CallTree
+	if err := json.Unmarshal([]byte(resh), &children); err != nil && resh != "" {
+		r.log("call_trace_child_error", req, err).
+			Error("Failed to unmarshal child call trace")
+		children = nil
+	}
+
+	cache := "miss"
+	if _, ok := res.Header["X-From-Cache"]; ok {
+		cache = "hit"
+	}
+
+	r.callTrace = append(r.callTrace, &CallTree{
+		Call:     req.Method + " " + req.URL.String(),
+		Time:     responseTime.Nanoseconds() / int64(time.Millisecond),
+		Status:   res.StatusCode,
+		Cache:    cache,
+		Children: children,
+	})
+}
+
+func (r *IOHeadersRecorder) log(code string, req *http.Request, err error) *logrus.Entry {
+	logger := logrus.WithFields(logrus.Fields{
+		"code":       code,
+		"parent_req": r.parentLogFields,
+	})
+	if req != nil {
+		logger = logger.WithField("child_req", requestLogFields(req))
+	}
+	if err != nil {
+		logger = logger.WithError(err)
+	}
+	return logger
 }
 
 type CallTree struct {
@@ -95,27 +127,6 @@ type CallTree struct {
 	Cache    string      `json:"cache"`
 	Time     int64       `json:"time"`
 	Children []*CallTree `json:"children,omitempty"`
-}
-
-func newCallTree(req *http.Request, res *http.Response, responseTime time.Duration) *CallTree {
-	resh := res.Header.Get(traceHeader)
-	var children []*CallTree
-	if err := json.Unmarshal([]byte(resh), &children); err != nil && resh != "" {
-		logrus.WithError(err).Error("Failed to unmarshal child call trace")
-	}
-
-	cache := "miss"
-	if _, ok := res.Header["X-From-Cache"]; ok {
-		cache = "hit"
-	}
-
-	return &CallTree{
-		Call:     req.Method + " " + req.URL.String(),
-		Time:     responseTime.Nanoseconds() / int64(time.Millisecond),
-		Status:   res.StatusCode,
-		Cache:    cache,
-		Children: children,
-	}
 }
 
 func requestLogFields(req *http.Request) logrus.Fields {
