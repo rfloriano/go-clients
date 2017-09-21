@@ -62,7 +62,7 @@ func (r *IOHeadersRecorder) BeforeDial(req *http.Request) {
 func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, responseTime time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.written {
+	if r.written && (req.Method == http.MethodGet || req.Method == http.MethodHead) {
 		r.log("headers_record_after_written", req, nil).
 			Warn("Request recorded after parent response already written")
 	}
