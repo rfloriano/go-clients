@@ -3,31 +3,39 @@ package clients
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
 	metadataHeader    = "X-Vtex-Meta"
 	enableTraceHeader = "X-Vtex-Trace-Enable"
 	traceHeader       = "X-Call-Trace"
+	requestIDHeader   = "X-Request-Id"
 )
 
 func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
-	var callTrace []*CallTree
-	enableTrace := false
-	if parent != nil && parent.Header.Get(enableTraceHeader) == "true" {
-		enableTrace = true
-		callTrace = []*CallTree{}
+	var headers http.Header
+	if parent != nil {
+		headers = parent.Header
+	}
+
+	enableTrace, _ := strconv.ParseBool(headers.Get(enableTraceHeader))
+	requestID := headers.Get(requestIDHeader)
+	if requestID == "" {
+		requestID = uuid.NewV4().String()
 	}
 
 	return &IOHeadersRecorder{
 		parentLogFields: requestLogFields(parent),
 		responseHeaders: http.Header{},
 		enableTrace:     enableTrace,
-		callTrace:       callTrace,
+		callTrace:       []*CallTree{},
+		requestID:       requestID,
 	}
 }
 
@@ -38,8 +46,16 @@ type IOHeadersRecorder struct {
 	responseHeaders http.Header
 	enableTrace     bool
 	callTrace       []*CallTree
+	requestID       string
 
 	written bool
+}
+
+func (r *IOHeadersRecorder) BeforeDial(req *http.Request) {
+	if r.enableTrace {
+		req.Header.Set(enableTraceHeader, "true")
+	}
+	req.Header.Set(requestIDHeader, r.requestID)
 }
 
 // Record records a request made in order to accumulate headers
@@ -58,10 +74,6 @@ func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, respon
 	if r.enableTrace {
 		r.recordChildCallTree(req, res, responseTime)
 	}
-}
-
-func (r *IOHeadersRecorder) EnableTrace() bool {
-	return r.enableTrace
 }
 
 // AddResponseHeaders writes accumulated headers to an outgoing response

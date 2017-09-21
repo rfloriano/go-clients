@@ -21,8 +21,8 @@ import (
 const HeaderETag = "ETag"
 
 type RequestRecorder interface {
+	BeforeDial(req *http.Request)
 	Record(req *http.Request, res *http.Response, responseTime time.Duration)
-	EnableTrace() bool
 }
 
 type Config struct {
@@ -111,9 +111,7 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 	p := plugin.New()
 	p.SetHandlers(plugin.Handlers{
 		"before dial": func(c *context.Context, h context.Handler) {
-			if recorder.EnableTrace() {
-				c.Request.Header.Set(enableTraceHeader, "true")
-			}
+			recorder.BeforeDial(c.Request)
 			c.Set(startTimeKey, time.Now())
 			h.Next(c)
 		},
