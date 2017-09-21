@@ -281,24 +281,24 @@ func (cl *Client) performConflictResolved(bucket string, req *gentleman.Request)
 	}
 	req.SetHeader(detectConflictsHeader, "true")
 
-	for {
-		// Clone request before sending or we won't be able to retry.
-		res, err := req.Clone().Send()
-
-		if isConflict(err) {
-			resolved, resolveErr := cl.conflictResolver.Resolve(cl, bucket)
-			if resolveErr != nil {
-				return nil, fmt.Errorf("Error resolving conflicts: %v", resolveErr)
-			} else if !resolved {
-				return nil, err
-			}
-
-			// Retry the request after conflicts resolved
-			continue
+	// Clone request before sending or we won't be able to retry.
+	res, err := req.Clone().Send()
+	if isConflict(err) {
+		resolved, resolveErr := cl.conflictResolver.Resolve(cl, bucket)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("Error resolving conflicts: %v", resolveErr)
+		} else if !resolved {
+			return nil, err
 		}
 
-		return res, err
+		// Retry the request after conflicts resolved
+		res, err = req.Send()
+		if isConflict(err) {
+			return nil, fmt.Errorf("Bucket %s still has conflicts after resolve attempt", bucket)
+		}
 	}
+
+	return res, err
 }
 
 func isConflict(err error) bool {
