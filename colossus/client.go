@@ -15,6 +15,7 @@ type Colossus interface {
 	SendLogJ(subject, level string, body interface{}) error
 	SendLogB(subject, level string, body []byte) error
 	SendEvent(subject, key string, body interface{}, extraHeaders http.Header) error
+	SendLog(subject, key string, body interface{}, extraHeaders http.Header) error
 }
 
 type Client struct {
@@ -37,11 +38,7 @@ func (cl *Client) SendEventJ(subject, key string, body interface{}) error {
 
 func (cl *Client) SendEvent(subject, key string, body interface{}, extraHeaders http.Header) error {
 	request := cl.http.Put().AddPath(fmt.Sprintf(eventPath, key, subject)).JSON(body)
-	for k, vs := range extraHeaders {
-		for _, v := range vs {
-			request.AddHeader(k, v)
-		}
-	}
+	addHeadersToRequest(request, extraHeaders)
 	_, err := request.Send()
 
 	return err
@@ -56,9 +53,13 @@ func (cl *Client) SendEventB(subject, key string, body []byte) error {
 }
 
 func (cl *Client) SendLogJ(subject, level string, body interface{}) error {
-	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(logPath, level, subject)).
-		JSON(body).Send()
+	return cl.SendLog(subject, level, body, nil)
+}
+
+func (cl *Client) SendLog(subject, level string, body interface{}, extraHeaders http.Header) error {
+	request := cl.http.Put().AddPath(fmt.Sprintf(logPath, level, subject)).JSON(body)
+	addHeadersToRequest(request, extraHeaders)
+	_, err := request.Send()
 
 	return err
 }
@@ -69,4 +70,12 @@ func (cl *Client) SendLogB(subject, level string, body []byte) error {
 		Body(bytes.NewReader(body)).Send()
 
 	return err
+}
+
+func addHeadersToRequest(request *gentleman.Request, headers http.Header) {
+	for k, vs := range headers {
+		for _, v := range vs {
+			request.AddHeader(k, v)
+		}
+	}
 }
