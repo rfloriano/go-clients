@@ -28,8 +28,8 @@ func NewClient(config *clients.Config) Colossus {
 }
 
 const (
-	eventPath = "/events/%v?subject=%v"
-	logPath   = "/logs/%v?subject=%v"
+	eventPath = "/events/%v"
+	logPath   = "/logs/%v"
 )
 
 func (cl *Client) SendEventJ(subject, key string, body interface{}) error {
@@ -37,7 +37,8 @@ func (cl *Client) SendEventJ(subject, key string, body interface{}) error {
 }
 
 func (cl *Client) SendEvent(subject, key string, body interface{}, extraHeaders http.Header) error {
-	request := cl.http.Put().AddPath(fmt.Sprintf(eventPath, key, subject)).JSON(body)
+	request := cl.http.Put().AddPath(fmt.Sprintf(eventPath, key)).
+		AddQuery("subject", subject).JSON(body)
 	addHeadersToRequest(request, extraHeaders)
 	_, err := request.Send()
 
@@ -46,7 +47,8 @@ func (cl *Client) SendEvent(subject, key string, body interface{}, extraHeaders 
 
 func (cl *Client) SendEventB(subject, key string, body []byte) error {
 	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(eventPath, key, subject)).
+		AddPath(fmt.Sprintf(eventPath, key)).
+		AddQuery("subject", subject).
 		Body(bytes.NewReader(body)).Send()
 
 	return err
@@ -57,7 +59,8 @@ func (cl *Client) SendLogJ(subject, level string, body interface{}) error {
 }
 
 func (cl *Client) SendLog(subject, level string, body interface{}, extraHeaders http.Header) error {
-	request := cl.http.Put().AddPath(fmt.Sprintf(logPath, level, subject)).JSON(body)
+	request := cl.http.Put().AddPath(fmt.Sprintf(logPath, level)).
+		AddQuery("subject", subject).JSON(body)
 	addHeadersToRequest(request, extraHeaders)
 	_, err := request.Send()
 
@@ -66,7 +69,8 @@ func (cl *Client) SendLog(subject, level string, body interface{}, extraHeaders 
 
 func (cl *Client) SendLogB(subject, level string, body []byte) error {
 	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(logPath, level, subject)).
+		AddPath(fmt.Sprintf(logPath, level)).
+		AddQuery("subject", subject).
 		Body(bytes.NewReader(body)).Send()
 
 	return err
