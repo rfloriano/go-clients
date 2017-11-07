@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	"time"
 
@@ -29,7 +28,6 @@ type Config struct {
 	Account   string
 	Workspace string
 	Region    string
-	Endpoint  string
 	AuthToken string
 	AuthFunc  func() string
 	UserAgent string
@@ -39,6 +37,10 @@ type Config struct {
 }
 
 func CreateClient(service string, config *Config, workspaceBound bool) *gentleman.Client {
+	return CreateGenericClient(endpoint(service, config), config, workspaceBound)
+}
+
+func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentleman.Client {
 	if config == nil {
 		panic("config cannot be <nil>")
 	}
@@ -55,8 +57,8 @@ func CreateClient(service string, config *Config, workspaceBound bool) *gentlema
 		cl = cl.Use(requestRecorder(config.Recorder))
 	}
 
-	if url := endpoint(service, config); url != "" {
-		cl = cl.BaseURL(url)
+	if url != "" {
+		cl = cl.URL(url)
 	}
 
 	if path := basePath(config, workspaceBound); path != "" {
@@ -125,9 +127,7 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 }
 
 func endpoint(service string, config *Config) string {
-	if config.Endpoint != "" {
-		return "http://" + strings.TrimRight(config.Endpoint, "/")
-	} else if service != "" {
+	if service != "" {
 		return fmt.Sprintf("http://%s.%s.vtex.io", service, config.Region)
 	} else {
 		return ""
