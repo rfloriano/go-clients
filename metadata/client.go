@@ -71,7 +71,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(bucketPath, cl.appName, bucket)).Send()
 	if err != nil {
-		return nil, "", 
+		return nil, "", err
 	}
 
 	var bucketResponse BucketResponse
