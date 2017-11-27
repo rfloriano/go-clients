@@ -44,29 +44,34 @@ type ConflictResolver interface {
 type Client struct {
 	http             *gentleman.Client
 	conflictResolver ConflictResolver
+	appName			 string
 }
 
 // NewClient creates a Metadata client with specified configuration. Conflict
 // resolver is optional but if set, will be called for each detected conflict in
 // metadata access methods to attempt a resolution logic.
-func NewClient(config *clients.Config, resolver ConflictResolver) Metadata {
+func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, error) {
 	cl := clients.CreateClient("kube-router", config, true)
-	return &Client{cl, resolver}
+	appName := clients.UserAgentName(config)
+	if appName == "" {
+	    return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+	}
+	return &Client{cl, resolver, appName}, nil
 }
 
 const (
-	bucketPath      = "/buckets/%v"
-	bucketStatePath = "/buckets/%v/state"
-	conflictsPath   = "/buckets/%v/conflicts"
-	metadataPath    = "/buckets/%v/metadata"
-	metadataKeyPath = "/buckets/%v/metadata/%v"
+	bucketPath      = "/buckets/%v/%v"
+	bucketStatePath = "/buckets/%v/%v/state"
+	conflictsPath   = "/buckets/%v/%v/conflicts"
+	metadataPath    = "/buckets/%v/%v/metadata"
+	metadataKeyPath = "/buckets/%v/%v/metadata/%v"
 )
 
 func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
-		AddPath(fmt.Sprintf(bucketPath, bucket)).Send()
+		AddPath(fmt.Sprintf(bucketPath, cl.appName, bucket)).Send()
 	if err != nil {
-		return nil, "", err
+		return nil, "", 
 	}
 
 	var bucketResponse BucketResponse
@@ -79,7 +84,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 
 func (cl *Client) SetBucketState(bucket, state string) error {
 	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(bucketStatePath, bucket)).
+		AddPath(fmt.Sprintf(bucketStatePath, cl.appName, bucket)).
 		JSON(state).Send()
 	if err != nil {
 		return err
@@ -93,7 +98,7 @@ func (cl *Client) List(bucket string, options *Options) (*MetadataListResponse, 
 	}
 
 	req := cl.http.Get().
-		AddPath(fmt.Sprintf(metadataPath, bucket)).
+		AddPath(fmt.Sprintf(metadataPath, cl.appName, bucket)).
 		SetQueryParams(map[string]string{
 			"value":   strconv.FormatBool(options.IncludeValue),
 			"_limit":  strconv.Itoa(options.Limit),
@@ -144,7 +149,7 @@ func (cl *Client) ListAll(bucket string, includeValue bool) (*MetadataListRespon
 
 func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Get().
-		AddPath(fmt.Sprintf(metadataKeyPath, bucket, key))
+		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key))
 	res, err := cl.performConflictResolved(bucket, req)
 	if err != nil {
 		return "", err
@@ -159,7 +164,7 @@ func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
 
 func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Put().
-		AddPath(fmt.Sprintf(metadataKeyPath, bucket, key)).
+		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key)).
 		JSON(data)
 	res, err := cl.performConflictResolved(bucket, req)
 
@@ -172,7 +177,7 @@ func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
 
 func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, error) {
 	req := cl.http.Put().
-		AddPath(fmt.Sprintf(metadataPath, bucket)).
+		AddPath(fmt.Sprintf(metadataPath, cl.appName, bucket)).
 		JSON(data)
 	res, err := cl.performConflictResolved(bucket, req)
 
@@ -185,7 +190,7 @@ func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, e
 
 func (cl *Client) Delete(bucket, key string) (bool, error) {
 	req := cl.http.Delete().
-		AddPath(fmt.Sprintf(metadataKeyPath, bucket, key))
+		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key))
 	_, err := cl.performConflictResolved(bucket, req)
 
 	if err != nil {
@@ -200,7 +205,7 @@ func (cl *Client) Delete(bucket, key string) (bool, error) {
 
 func (cl *Client) DeleteAll(bucket string) error {
 	_, err := cl.http.Delete().
-		AddPath(fmt.Sprintf(metadataPath, bucket)).
+		AddPath(fmt.Sprintf(metadataPath, cl.appName, bucket)).
 		Send()
 
 	return err
@@ -253,7 +258,7 @@ func (cl *Client) DoAll(bucket string, patch MetadataPatchRequest) error {
 
 func (cl *Client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
 	res, err := cl.http.Get().
-		AddPath(fmt.Sprintf(conflictsPath, bucket)).
+		AddPath(fmt.Sprintf(conflictsPath, cl.appName, bucket)).
 		Send()
 	if err != nil {
 		return nil, err
@@ -269,7 +274,7 @@ func (cl *Client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
 
 func (cl *Client) ResolveConflicts(bucket string, patch MetadataPatchRequest) error {
 	_, err := cl.http.Patch().
-		AddPath(fmt.Sprintf(conflictsPath, bucket)).
+		AddPath(fmt.Sprintf(conflictsPath, cl.appName, bucket)).
 		JSON(patch).
 		Send()
 	return err

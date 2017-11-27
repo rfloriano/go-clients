@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"time"
 
@@ -140,4 +141,9 @@ func basePath(config *Config, workspaceBound bool) string {
 	}
 
 	return ""
+}
+
+func UserAgentName(config *Config) string {
+	appName := strings.SplitN(config.UserAgent, "/", 2)
+	return strings.ToLower(appName[0])
 }

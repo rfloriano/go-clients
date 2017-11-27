@@ -35,25 +35,30 @@ type VBase interface {
 // Client is a struct that provides interaction with workspaces
 type Client struct {
 	http *gentleman.Client
+	appName string
 }
 
 // NewClient creates a new Workspaces client
-func NewClient(config *clients.Config) VBase {
+func NewClient(config *clients.Config) (VBase, error) {
 	cl := clients.CreateClient("vbase", config, true)
-	return &Client{cl}
+	appName := clients.UserAgentName(config);
+	if appName == "" {
+	    return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+	}
+	return &Client{cl, appName}, nil
 }
 
 const (
-	pathToBucket      = "/buckets/%v"
-	pathToBucketState = "/buckets/%v/state"
-	pathToFileList    = "/buckets/%v/files"
-	pathToFile        = "/buckets/%v/files/%v"
+	pathToBucket      = "/buckets/%v/%v"
+	pathToBucketState = "/buckets/%v/%v/state"
+	pathToFileList    = "/buckets/%v/%v/files"
+	pathToFile        = "/buckets/%v/%v/files/%v"
 )
 
 // GetBucket describes the current state of a bucket
 func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
-		AddPath(fmt.Sprintf(pathToBucket, bucket)).Send()
+		AddPath(fmt.Sprintf(pathToBucket, cl.appName, bucket)).Send()
 	if err != nil {
 		return nil, "", err
 	}
@@ -69,7 +74,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 // SetBucketState sets the current state of a bucket
 func (cl *Client) SetBucketState(bucket, state string) (string, error) {
 	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(pathToBucketState, bucket)).
+		AddPath(fmt.Sprintf(pathToBucketState, cl.appName, bucket)).
 		JSON(state).Send()
 	if err != nil {
 		return "", err
@@ -80,7 +85,7 @@ func (cl *Client) SetBucketState(bucket, state string) (string, error) {
 
 // GetFile gets a file's content as a read closer
 func (cl *Client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
-	res, err := cl.http.Get().AddPath(fmt.Sprintf(pathToFile, bucket, path)).Send()
+	res, err := cl.http.Get().AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).Send()
 	if err != nil {
 		return nil, res.Header.Get(clients.HeaderETag), err
 	}
@@ -91,7 +96,7 @@ func (cl *Client) GetFile(bucket, path string) (*gentleman.Response, string, err
 // GetFileConflict gets a file's content as a byte slice, or conflict
 func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error) {
 	req := cl.http.Get().
-		AddPath(fmt.Sprintf(pathToFile, bucket, path)).
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Use(headers.Set("x-conflict-resolution", "merge"))
 
 	res, err := req.Send()
@@ -112,7 +117,7 @@ func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Co
 // SaveFile saves a file to a workspace
 func (cl *Client) SaveFile(bucket, path string, body io.Reader) (string, error) {
 	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(pathToFile, bucket, path)).
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Body(body).Send()
 
 	return "", err
@@ -121,7 +126,7 @@ func (cl *Client) SaveFile(bucket, path string, body io.Reader) (string, error) 
 // SaveFileB saves a file to a workspace
 func (cl *Client) SaveFileB(bucket, path string, body []byte, contentType string, unzip bool) (string, error) {
 	res, err := cl.http.Put().
-		AddPath(fmt.Sprintf(pathToFile, bucket, path)).
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		SetQuery("unzip", fmt.Sprintf("%v", unzip)).
 		Body(bytes.NewReader(body)).Send()
 
@@ -139,7 +144,7 @@ func (cl *Client) ListFiles(bucket string, options *Options) (*FileListResponse,
 	}
 
 	res, err := cl.http.Get().
-		AddPath(fmt.Sprintf(pathToFileList, bucket)).
+		AddPath(fmt.Sprintf(pathToFileList, cl.appName, bucket)).
 		SetQueryParams(map[string]string{
 			"prefix": options.Prefix,
 			"_next":  options.Marker,
@@ -191,7 +196,7 @@ func (cl *Client) ListAllFiles(bucket, prefix string) (*FileListResponse, string
 // DeleteFile deletes a file from the workspace
 func (cl *Client) DeleteFile(bucket, path string) error {
 	_, err := cl.http.Delete().
-		AddPath(fmt.Sprintf(pathToFile, bucket, path)).
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Send()
 
 	return err
@@ -200,7 +205,7 @@ func (cl *Client) DeleteFile(bucket, path string) error {
 // DeleteAllFiles deletes all files from the specificed bucket
 func (cl *Client) DeleteAllFiles(bucket string) error {
 	_, err := cl.http.Delete().
-		AddPath(fmt.Sprintf(pathToFileList, bucket)).
+		AddPath(fmt.Sprintf(pathToFileList, cl.appName, bucket)).
 		Send()
 
 	return err

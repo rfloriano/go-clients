@@ -6,6 +6,20 @@ import (
 	"net/url"
 )
 
+type NoUserAgentError struct {
+	message string
+}
+
+func NewNoUserAgentError(message string) *NoUserAgentError {
+	return &NoUserAgentError {
+		message: message,
+	}
+}
+
+func (e *NoUserAgentError) Error() string {
+    return e.message
+}
+
 type ResponseError struct {
 	Response   *http.Response
 	StatusCode int
