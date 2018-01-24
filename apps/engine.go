@@ -17,6 +17,7 @@ type Apps interface {
 	GetFile(app, parentID, path string) (io.ReadCloser, string, error)
 	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
 	GetDependencies() (map[string][]string, string, error)
+	GetRootApps() (*RootAppList, error)
 }
 
 // Client is a struct that provides interaction with apps
@@ -32,6 +33,7 @@ func NewAppsClient(config *clients.Config) Apps {
 
 const (
 	pathToDependencies = "/dependencies"
+	pathToRootApps     = "/apps"
 	pathToApp          = "/apps/%v"
 	pathToFiles        = "/apps/%v/files"
 	pathToFile         = "/apps/%v/files/%v"
@@ -123,4 +125,21 @@ func addParent(parentID string) plugin.Plugin {
 		}
 		h.Next(ctx)
 	})
+}
+
+func (cl *AppsClient) GetRootApps() (*RootAppList, error) {
+	res, err := cl.http.Get().
+		AddPath(pathToRootApps).
+		Send()
+
+	if err != nil {
+		return nil, err
+	}
+
+	var rootApps RootAppList
+	if err := res.JSON(&rootApps); err != nil {
+		return nil, err
+	}
+
+	return &rootApps, nil
 }

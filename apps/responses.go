@@ -59,3 +59,14 @@ type PublishedApp struct {
 	Publisher        string            `json:"_publisher"`
 	PublicationDate  string            `json:"_publicationDate"`
 }
+
+// RootApp represents the app data when it's requested the list of root apps
+type RootApp struct {
+	Apps     string `json:"app"`
+	ID       string `json:"id"`
+	Location string `json:"location"`
+}
+
+type RootAppList struct {
+	Apps []*RootApp `json:"data"`
+}
