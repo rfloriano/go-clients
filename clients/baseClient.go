@@ -30,6 +30,7 @@ type Config struct {
 	Workspace string
 	Region    string
 	AuthToken string
+	Endpoint  string
 	AuthFunc  func() string
 	UserAgent string
 	Recorder  RequestRecorder
@@ -128,7 +129,9 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 }
 
 func endpoint(service string, config *Config) string {
-	if service != "" {
+	if config.Endpoint != "" {
+		return config.Endpoint
+	} else if service != "" {
 		return fmt.Sprintf("http://%s.%s.vtex.io", service, config.Region)
 	} else {
 		return ""
