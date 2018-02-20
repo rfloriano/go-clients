@@ -18,7 +18,10 @@ import (
 	"gopkg.in/h2non/gentleman.v1/plugins/transport"
 )
 
-const HeaderETag = "ETag"
+const (
+	HeaderETag   = "ETag"
+	startTimeKey = "startTime"
+)
 
 type RequestRecorder interface {
 	BeforeDial(req *http.Request)
@@ -110,8 +113,6 @@ func responseErrors() plugin.Plugin {
 }
 
 func requestRecorder(recorder RequestRecorder) plugin.Plugin {
-	const startTimeKey = "startTime"
-
 	p := plugin.New()
 	p.SetHandlers(plugin.Handlers{
 		"before dial": func(c *context.Context, h context.Handler) {
@@ -120,12 +121,25 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 			h.Next(c)
 		},
 		"response": func(c *context.Context, h context.Handler) {
-			responseTime := time.Since(c.Get(startTimeKey).(time.Time))
-			recorder.Record(c.Request, c.Response, responseTime)
+			recordResponse(recorder, c)
+			h.Next(c)
+		},
+		"error": func(c *context.Context, h context.Handler) {
+			//Every response with status code >= 400 is transformed to an Error
+			//by the middleware "responseErrors". That's why this code is not inside
+			//of response handler.
+			if c.Response.StatusCode == http.StatusNotFound {
+				recordResponse(recorder, c)
+			}
 			h.Next(c)
 		},
 	})
 	return p
+}
+
+func recordResponse(recorder RequestRecorder, c *context.Context) {
+	responseTime := time.Since(c.Get(startTimeKey).(time.Time))
+	recorder.Record(c.Request, c.Response, responseTime)
 }
 
 func endpoint(service string, config *Config) string {
