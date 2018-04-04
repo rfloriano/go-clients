@@ -83,8 +83,8 @@ func (cl *Client) SetBucketState(bucket, state string) (string, error) {
 	return "", nil
 }
 
-// Get populates data with the content of the specified file, assuming it is serialized as JSON
-func (cl *Client) Get(bucket, path string, data interface{}) (string, error) {
+// GetJSON populates data with the content of the specified file, assuming it is serialized as JSON
+func (cl *Client) GetJSON(bucket, path string, data interface{}) (string, error) {
 	res, etag, err := cl.GetFile(bucket, path)
 	if err != nil {
 		return "", err
@@ -128,8 +128,8 @@ func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Co
 	return res, nil, res.Header.Get(clients.HeaderETag), nil
 }
 
-// Save saves generic data serializing it to JSON
-func (cl *Client) Save(bucket, path string, data interface{}) (string, error) {
+// SaveJSON saves generic data serializing it to JSON
+func (cl *Client) SaveJSON(bucket, path string, data interface{}) (string, error) {
 	res, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		JSON(data).Send()
