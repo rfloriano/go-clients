@@ -18,8 +18,10 @@ type Options struct {
 	Limit  int
 }
 
-// Workspaces is an interface for interacting with workspaces
+// VBase is an interface for interacting with VBase
 type VBase interface {
+	GetJSON(bucket, key string, data interface{}) (string, error)
+	SaveJSON(bucket, key string, data interface{}) (string, error)
 	GetBucket(bucket string) (*BucketResponse, string, error)
 	SetBucketState(bucket, state string) (string, error)
 	GetFile(bucket, path string) (*gentleman.Response, string, error)
