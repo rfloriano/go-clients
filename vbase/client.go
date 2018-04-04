@@ -34,16 +34,16 @@ type VBase interface {
 
 // Client is a struct that provides interaction with workspaces
 type Client struct {
-	http *gentleman.Client
+	http    *gentleman.Client
 	appName string
 }
 
 // NewClient creates a new Workspaces client
 func NewClient(config *clients.Config) (VBase, error) {
 	cl := clients.CreateClient("vbase", config, true)
-	appName := clients.UserAgentName(config);
+	appName := clients.UserAgentName(config)
 	if appName == "" {
-	    return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
 	}
 	return &Client{cl, appName}, nil
 }
@@ -83,6 +83,20 @@ func (cl *Client) SetBucketState(bucket, state string) (string, error) {
 	return "", nil
 }
 
+// Get populates data with the content of the specified file, assuming it is serialized as JSON
+func (cl *Client) Get(bucket, path string, data interface{}) (string, error) {
+	res, etag, err := cl.GetFile(bucket, path)
+	if err != nil {
+		return "", err
+	}
+
+	if err := res.JSON(data); err != nil {
+		return "", err
+	}
+
+	return etag, nil
+}
+
 // GetFile gets a file's content as a read closer
 func (cl *Client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
 	res, err := cl.http.Get().AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).Send()
@@ -112,6 +126,19 @@ func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Co
 	}
 
 	return res, nil, res.Header.Get(clients.HeaderETag), nil
+}
+
+// Save saves generic data serializing it to JSON
+func (cl *Client) Save(bucket, path string, data interface{}) (string, error) {
+	res, err := cl.http.Put().
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
+		JSON(data).Send()
+
+	if err != nil {
+		return "", err
+	}
+
+	return res.Header.Get(clients.HeaderETag), nil
 }
 
 // SaveFile saves a file to a workspace

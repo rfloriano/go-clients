@@ -44,7 +44,7 @@ type ConflictResolver interface {
 type Client struct {
 	http             *gentleman.Client
 	conflictResolver ConflictResolver
-	appName			 string
+	appName          string
 }
 
 // NewClient creates a Metadata client with specified configuration. Conflict
@@ -54,7 +54,7 @@ func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, err
 	cl := clients.CreateClient("kube-router", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
-	    return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
 	}
 	return &Client{cl, resolver, appName}, nil
 }
@@ -79,7 +79,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 		return nil, "", err
 	}
 
-	return &bucketResponse, res.Header.Get("ETag"), nil
+	return &bucketResponse, res.Header.Get(clients.HeaderETag), nil
 }
 
 func (cl *Client) SetBucketState(bucket, state string) error {
@@ -147,6 +147,7 @@ func (cl *Client) ListAll(bucket string, includeValue bool) (*MetadataListRespon
 	return list, eTag, nil
 }
 
+// Get populates data with the content of the specified file, assuming it is serialized as JSON
 func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Get().
 		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key))
@@ -159,9 +160,10 @@ func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
 		return "", err
 	}
 
-	return res.Header.Get("ETag"), nil
+	return res.Header.Get(clients.HeaderETag), nil
 }
 
+// Save saves generic data serializing it to JSON
 func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Put().
 		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key)).
@@ -172,7 +174,7 @@ func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
 		return "", err
 	}
 
-	return res.Header.Get("ETag"), nil
+	return res.Header.Get(clients.HeaderETag), nil
 }
 
 func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, error) {
@@ -185,7 +187,7 @@ func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, e
 		return "", err
 	}
 
-	return res.Header.Get("ETag"), nil
+	return res.Header.Get(clients.HeaderETag), nil
 }
 
 func (cl *Client) Delete(bucket, key string) (bool, error) {
