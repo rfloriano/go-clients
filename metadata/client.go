@@ -54,7 +54,7 @@ func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, err
 	cl := clients.CreateClient("kube-router", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
-		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata client.")
 	}
 	return &Client{cl, resolver, appName}, nil
 }

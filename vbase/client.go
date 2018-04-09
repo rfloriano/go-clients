@@ -45,7 +45,7 @@ func NewClient(config *clients.Config) (VBase, error) {
 	cl := clients.CreateClient("vbase", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
-		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata cient.")
+		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
 	return &Client{cl, appName}, nil
 }
