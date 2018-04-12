@@ -22,6 +22,7 @@ type Options struct {
 	Marker       string
 }
 
+// Metadata is an interface for interacting with Metadata
 type Metadata interface {
 	GetBucket(bucket string) (*BucketResponse, string, error)
 	SetBucketState(bucket, state string) error
@@ -41,7 +42,7 @@ type ConflictResolver interface {
 	Resolve(client Metadata, bucketDetected string) (resolved bool, err error)
 }
 
-type Client struct {
+type client struct {
 	http             *gentleman.Client
 	conflictResolver ConflictResolver
 	appName          string
@@ -56,7 +57,7 @@ func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, err
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata client.")
 	}
-	return &Client{cl, resolver, appName}, nil
+	return &client{cl, resolver, appName}, nil
 }
 
 const (
@@ -67,7 +68,7 @@ const (
 	metadataKeyPath = "/buckets/%v/%v/metadata/%v"
 )
 
-func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
+func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(bucketPath, cl.appName, bucket)).Send()
 	if err != nil {
@@ -82,7 +83,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	return &bucketResponse, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *Client) SetBucketState(bucket, state string) error {
+func (cl *client) SetBucketState(bucket, state string) error {
 	_, err := cl.http.Put().
 		AddPath(fmt.Sprintf(bucketStatePath, cl.appName, bucket)).
 		JSON(state).Send()
@@ -92,7 +93,7 @@ func (cl *Client) SetBucketState(bucket, state string) error {
 	return nil
 }
 
-func (cl *Client) List(bucket string, options *Options) (*MetadataListResponse, string, error) {
+func (cl *client) List(bucket string, options *Options) (*MetadataListResponse, string, error) {
 	if options.Limit <= 0 {
 		options.Limit = 10
 	}
@@ -118,7 +119,7 @@ func (cl *Client) List(bucket string, options *Options) (*MetadataListResponse, 
 	return &metadata, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *Client) ListAll(bucket string, includeValue bool) (*MetadataListResponse, string, error) {
+func (cl *client) ListAll(bucket string, includeValue bool) (*MetadataListResponse, string, error) {
 	options := &Options{
 		Limit:        100,
 		IncludeValue: includeValue,
@@ -148,7 +149,7 @@ func (cl *Client) ListAll(bucket string, includeValue bool) (*MetadataListRespon
 }
 
 // Get populates data with the content of the specified file, assuming it is serialized as JSON
-func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
+func (cl *client) Get(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Get().
 		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key))
 	res, err := cl.performConflictResolved(bucket, req)
@@ -164,7 +165,7 @@ func (cl *Client) Get(bucket, key string, data interface{}) (string, error) {
 }
 
 // Save saves generic data serializing it to JSON
-func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
+func (cl *client) Save(bucket, key string, data interface{}) (string, error) {
 	req := cl.http.Put().
 		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key)).
 		JSON(data)
@@ -177,7 +178,7 @@ func (cl *Client) Save(bucket, key string, data interface{}) (string, error) {
 	return res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, error) {
+func (cl *client) SaveAll(bucket string, data map[string]interface{}) (string, error) {
 	req := cl.http.Put().
 		AddPath(fmt.Sprintf(metadataPath, cl.appName, bucket)).
 		JSON(data)
@@ -190,7 +191,7 @@ func (cl *Client) SaveAll(bucket string, data map[string]interface{}) (string, e
 	return res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *Client) Delete(bucket, key string) (bool, error) {
+func (cl *client) Delete(bucket, key string) (bool, error) {
 	req := cl.http.Delete().
 		AddPath(fmt.Sprintf(metadataKeyPath, cl.appName, bucket, key))
 	_, err := cl.performConflictResolved(bucket, req)
@@ -205,7 +206,7 @@ func (cl *Client) Delete(bucket, key string) (bool, error) {
 	return true, nil
 }
 
-func (cl *Client) DeleteAll(bucket string) error {
+func (cl *client) DeleteAll(bucket string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(metadataPath, cl.appName, bucket)).
 		Send()
@@ -213,7 +214,7 @@ func (cl *Client) DeleteAll(bucket string) error {
 	return err
 }
 
-func (cl *Client) DoAll(bucket string, patch MetadataPatchRequest) error {
+func (cl *client) DoAll(bucket string, patch MetadataPatchRequest) error {
 	toSave := map[string]interface{}{}
 	// not to block goroutines, assume at most one error per operation
 	errs := make(chan error, len(patch))
@@ -258,7 +259,7 @@ func (cl *Client) DoAll(bucket string, patch MetadataPatchRequest) error {
 	return nil
 }
 
-func (cl *Client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
+func (cl *client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(conflictsPath, cl.appName, bucket)).
 		Send()
@@ -274,7 +275,7 @@ func (cl *Client) ListAllConflicts(bucket string) ([]*MetadataConflict, error) {
 	return response.Data, nil
 }
 
-func (cl *Client) ResolveConflicts(bucket string, patch MetadataPatchRequest) error {
+func (cl *client) ResolveConflicts(bucket string, patch MetadataPatchRequest) error {
 	_, err := cl.http.Patch().
 		AddPath(fmt.Sprintf(conflictsPath, cl.appName, bucket)).
 		JSON(patch).
@@ -282,7 +283,7 @@ func (cl *Client) ResolveConflicts(bucket string, patch MetadataPatchRequest) er
 	return err
 }
 
-func (cl *Client) performConflictResolved(bucket string, req *gentleman.Request) (*gentleman.Response, error) {
+func (cl *client) performConflictResolved(bucket string, req *gentleman.Request) (*gentleman.Response, error) {
 	if cl.conflictResolver == nil {
 		return req.Send()
 	}

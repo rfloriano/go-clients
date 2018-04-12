@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 
 	"strconv"
 
 	"github.com/vtex/go-clients/clients"
+	"github.com/vtex/go-clients/metadata"
 	"gopkg.in/h2non/gentleman.v1"
 	"gopkg.in/h2non/gentleman.v1/plugins/headers"
 )
@@ -34,10 +36,20 @@ type VBase interface {
 	DeleteAllFiles(bucket string) error
 }
 
-// Client is a struct that provides interaction with workspaces
-type Client struct {
+// VBaseWithFallback is an interface for interacting with VBase with fallback to Metadata
+type VBaseWithFallback interface {
+	VBase
+	GetJSONWithFallback(vbaseBucket, metadataBucket, key string, data interface{}) (string, error)
+}
+
+type client struct {
 	http    *gentleman.Client
 	appName string
+}
+
+type clientWithFallback struct {
+	*client
+	metadata metadata.Metadata
 }
 
 // NewClient creates a new Workspaces client
@@ -47,7 +59,20 @@ func NewClient(config *clients.Config) (VBase, error) {
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
-	return &Client{cl, appName}, nil
+	return &client{cl, appName}, nil
+}
+
+// NewClientFallback creates a new Workspaces client with fallback to Metadata
+func NewClientFallback(vbaseConfig, metadataConfig *clients.Config) (VBaseWithFallback, error) {
+	cl, err := NewClient(vbaseConfig)
+	if err != nil {
+		return nil, err
+	}
+	clMetadata, err := metadata.NewClient(metadataConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &clientWithFallback{cl.(*client), clMetadata}, nil
 }
 
 const (
@@ -58,7 +83,7 @@ const (
 )
 
 // GetBucket describes the current state of a bucket
-func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
+func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToBucket, cl.appName, bucket)).Send()
 	if err != nil {
@@ -74,7 +99,7 @@ func (cl *Client) GetBucket(bucket string) (*BucketResponse, string, error) {
 }
 
 // SetBucketState sets the current state of a bucket
-func (cl *Client) SetBucketState(bucket, state string) (string, error) {
+func (cl *client) SetBucketState(bucket, state string) (string, error) {
 	_, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToBucketState, cl.appName, bucket)).
 		JSON(state).Send()
@@ -86,7 +111,7 @@ func (cl *Client) SetBucketState(bucket, state string) (string, error) {
 }
 
 // GetJSON populates data with the content of the specified file, assuming it is serialized as JSON
-func (cl *Client) GetJSON(bucket, path string, data interface{}) (string, error) {
+func (cl *client) GetJSON(bucket, path string, data interface{}) (string, error) {
 	res, etag, err := cl.GetFile(bucket, path)
 	if err != nil {
 		return "", err
@@ -99,8 +124,19 @@ func (cl *Client) GetJSON(bucket, path string, data interface{}) (string, error)
 	return etag, nil
 }
 
+func (cl *clientWithFallback) GetJSONWithFallback(vbaseBucket, metadataBucket, path string, data interface{}) (string, error) {
+	etag, err := cl.GetJSON(vbaseBucket, path, data)
+	if rerr, ok := err.(clients.ResponseError); ok && rerr.StatusCode == http.StatusNotFound {
+		etag, err = cl.metadata.Get(metadataBucket, path, data)
+		if err == nil {
+			etag, err = cl.SaveJSON(vbaseBucket, path, data)
+		}
+	}
+	return etag, err
+}
+
 // GetFile gets a file's content as a read closer
-func (cl *Client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
+func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
 	res, err := cl.http.Get().AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).Send()
 	if err != nil {
 		return nil, res.Header.Get(clients.HeaderETag), err
@@ -110,7 +146,7 @@ func (cl *Client) GetFile(bucket, path string) (*gentleman.Response, string, err
 }
 
 // GetFileConflict gets a file's content as a byte slice, or conflict
-func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error) {
+func (cl *client) GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error) {
 	req := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Use(headers.Set("x-conflict-resolution", "merge"))
@@ -131,7 +167,7 @@ func (cl *Client) GetFileConflict(bucket, path string) (*gentleman.Response, *Co
 }
 
 // SaveJSON saves generic data serializing it to JSON
-func (cl *Client) SaveJSON(bucket, path string, data interface{}) (string, error) {
+func (cl *client) SaveJSON(bucket, path string, data interface{}) (string, error) {
 	res, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		JSON(data).Send()
@@ -144,7 +180,7 @@ func (cl *Client) SaveJSON(bucket, path string, data interface{}) (string, error
 }
 
 // SaveFile saves a file to a workspace
-func (cl *Client) SaveFile(bucket, path string, body io.Reader) (string, error) {
+func (cl *client) SaveFile(bucket, path string, body io.Reader) (string, error) {
 	_, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Body(body).Send()
@@ -153,7 +189,7 @@ func (cl *Client) SaveFile(bucket, path string, body io.Reader) (string, error) 
 }
 
 // SaveFileB saves a file to a workspace
-func (cl *Client) SaveFileB(bucket, path string, body []byte, contentType string, unzip bool) (string, error) {
+func (cl *client) SaveFileB(bucket, path string, body []byte, contentType string, unzip bool) (string, error) {
 	res, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		SetQuery("unzip", fmt.Sprintf("%v", unzip)).
@@ -167,7 +203,7 @@ func (cl *Client) SaveFileB(bucket, path string, body []byte, contentType string
 }
 
 // ListFiles returns a list of files, given a prefix
-func (cl *Client) ListFiles(bucket string, options *Options) (*FileListResponse, string, error) {
+func (cl *client) ListFiles(bucket string, options *Options) (*FileListResponse, string, error) {
 	if options.Limit <= 0 {
 		options.Limit = 10
 	}
@@ -193,7 +229,7 @@ func (cl *Client) ListFiles(bucket string, options *Options) (*FileListResponse,
 }
 
 // ListAllFiles returns a complete list of files, given a prefix
-func (cl *Client) ListAllFiles(bucket, prefix string) (*FileListResponse, string, error) {
+func (cl *client) ListAllFiles(bucket, prefix string) (*FileListResponse, string, error) {
 	options := &Options{
 		Limit:  100,
 		Prefix: prefix,
@@ -223,7 +259,7 @@ func (cl *Client) ListAllFiles(bucket, prefix string) (*FileListResponse, string
 }
 
 // DeleteFile deletes a file from the workspace
-func (cl *Client) DeleteFile(bucket, path string) error {
+func (cl *client) DeleteFile(bucket, path string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Send()
@@ -232,7 +268,7 @@ func (cl *Client) DeleteFile(bucket, path string) error {
 }
 
 // DeleteAllFiles deletes all files from the specificed bucket
-func (cl *Client) DeleteAllFiles(bucket string) error {
+func (cl *client) DeleteAllFiles(bucket string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFileList, cl.appName, bucket)).
 		Send()
