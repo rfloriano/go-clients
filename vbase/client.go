@@ -20,20 +20,27 @@ type Options struct {
 	Limit  int
 }
 
+type SaveFileOptions struct {
+	ContentType string
+	Unzip       bool
+}
+
 // VBase is an interface for interacting with VBase
 type VBase interface {
-	GetJSON(bucket, key string, data interface{}) (string, error)
-	SaveJSON(bucket, key string, data interface{}) (string, error)
-	GetBucket(bucket string) (*BucketResponse, string, error)
-	SetBucketState(bucket, state string) (string, error)
 	GetFile(bucket, path string) (*gentleman.Response, string, error)
-	GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error)
-	SaveFile(bucket, path string, body io.Reader) (string, error)
-	SaveFileB(bucket, path string, content []byte, contentType string, unzip bool) (string, error)
+	GetJSON(bucket, key string, data interface{}) (string, error)
 	ListFiles(bucket string, options *Options) (*FileListResponse, string, error)
 	ListAllFiles(bucket, prefix string) (*FileListResponse, string, error)
+
+	SaveFile(bucket, path string, body io.Reader, opts SaveFileOptions) (string, error)
+	SaveFileB(bucket, path string, content []byte, opts SaveFileOptions) (string, error)
+	SaveJSON(bucket, key string, data interface{}) (string, error)
 	DeleteFile(bucket, path string) error
 	DeleteAllFiles(bucket string) error
+
+	GetBucket(bucket string) (*BucketResponse, string, error)
+	SetBucketState(bucket, state string) (string, error)
+	GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error)
 }
 
 // VBaseWithFallback is an interface for interacting with VBase with fallback to Metadata
@@ -180,26 +187,25 @@ func (cl *client) SaveJSON(bucket, path string, data interface{}) (string, error
 }
 
 // SaveFile saves a file to a workspace
-func (cl *client) SaveFile(bucket, path string, body io.Reader) (string, error) {
-	_, err := cl.http.Put().
+func (cl *client) SaveFile(bucket, path string, body io.Reader, opts SaveFileOptions) (string, error) {
+	req := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		Body(body).Send()
+		SetQuery("unzip", fmt.Sprintf("%v", opts.Unzip)).
+		Body(body)
+	if opts.ContentType != "" {
+		req = req.SetHeader("Content-Type", opts.ContentType)
+	}
 
-	return "", err
-}
-
-// SaveFileB saves a file to a workspace
-func (cl *client) SaveFileB(bucket, path string, body []byte, contentType string, unzip bool) (string, error) {
-	res, err := cl.http.Put().
-		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		SetQuery("unzip", fmt.Sprintf("%v", unzip)).
-		Body(bytes.NewReader(body)).Send()
-
+	res, err := req.Send()
 	if err != nil {
 		return "", err
 	}
-
 	return res.Header.Get(clients.HeaderETag), nil
+}
+
+// SaveFileB saves a file to a workspace
+func (cl *client) SaveFileB(bucket, path string, body []byte, opts SaveFileOptions) (string, error) {
+	return cl.SaveFile(bucket, path, bytes.NewReader(body), opts)
 }
 
 // ListFiles returns a list of files, given a prefix
