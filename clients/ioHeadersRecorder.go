@@ -3,6 +3,7 @@ package clients
 import (
 	"encoding/json"
 	"net/http"
+	"net/textproto"
 	"strconv"
 	"sync"
 	"time"
@@ -11,11 +12,11 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-const (
-	metadataHeader    = "X-Vtex-Meta"
-	enableTraceHeader = "X-Vtex-Trace-Enable"
-	traceHeader       = "X-Call-Trace"
-	requestIDHeader   = "X-Request-Id"
+var (
+	metadataHeader    = textproto.CanonicalMIMEHeaderKey("X-Vtex-Meta")
+	enableTraceHeader = textproto.CanonicalMIMEHeaderKey("X-Vtex-Trace-Enable")
+	traceHeader       = textproto.CanonicalMIMEHeaderKey("X-Call-Trace")
+	requestIDHeader   = textproto.CanonicalMIMEHeaderKey("X-Request-Id")
 )
 
 func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
@@ -31,22 +32,22 @@ func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
 	}
 
 	return &IOHeadersRecorder{
-		parentLogFields: requestLogFields(parent),
-		responseHeaders: http.Header{},
-		enableTrace:     enableTrace,
-		callTrace:       []*CallTree{},
-		requestID:       requestID,
+		parentLogFields:   requestLogFields(parent),
+		smartCacheHeaders: []string{},
+		enableTrace:       enableTrace,
+		callTrace:         []*CallTree{},
+		requestID:         requestID,
 	}
 }
 
 type IOHeadersRecorder struct {
 	mu sync.RWMutex
 
-	parentLogFields logrus.Fields
-	responseHeaders http.Header
-	enableTrace     bool
-	callTrace       []*CallTree
-	requestID       string
+	parentLogFields   logrus.Fields
+	smartCacheHeaders []string
+	enableTrace       bool
+	callTrace         []*CallTree
+	requestID         string
 
 	written bool
 }
@@ -67,9 +68,7 @@ func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, respon
 			Warn("Request recorded after parent response already written")
 	}
 
-	for _, h := range res.Header[metadataHeader] {
-		r.responseHeaders.Add(metadataHeader, h)
-	}
+	r.smartCacheHeaders = append(r.smartCacheHeaders, res.Header[metadataHeader]...)
 
 	if r.enableTrace {
 		r.recordChildCallTree(req, res, responseTime)
@@ -82,9 +81,7 @@ func (r *IOHeadersRecorder) AddResponseHeaders(out http.Header) {
 	defer r.mu.RUnlock()
 	r.written = true
 
-	for h, v := range r.responseHeaders {
-		out[h] = append(out[h], v...)
-	}
+	out[metadataHeader] = append(out[metadataHeader], r.smartCacheHeaders...)
 
 	if r.enableTrace {
 		trace, err := json.Marshal(r.callTrace)
@@ -94,6 +91,12 @@ func (r *IOHeadersRecorder) AddResponseHeaders(out http.Header) {
 		}
 		out.Set(traceHeader, string(trace))
 	}
+}
+
+func (r *IOHeadersRecorder) ClearSmartCacheHeaders() {
+	r.mu.Lock()
+	r.smartCacheHeaders = nil
+	r.mu.Unlock()
 }
 
 func (r *IOHeadersRecorder) recordChildCallTree(req *http.Request, res *http.Response, responseTime time.Duration) {
