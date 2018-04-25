@@ -222,7 +222,7 @@ func (cl *client) DoAll(bucket string, patch MetadataPatchRequest) error {
 	wg := sync.WaitGroup{}
 	for _, op := range patch {
 		switch op.Type {
-		case OperationTypeAdd, OperationTypeReplace:
+		case OperationTypeReplace:
 			toSave[op.Key] = op.Value
 		case OperationTypeRemove:
 			wg.Add(1)

@@ -11,7 +11,6 @@ import (
 	"github.com/vtex/go-clients/clients"
 	"github.com/vtex/go-clients/metadata"
 	"gopkg.in/h2non/gentleman.v1"
-	"gopkg.in/h2non/gentleman.v1/plugins/headers"
 )
 
 type Options struct {
@@ -28,19 +27,21 @@ type SaveFileOptions struct {
 // VBase is an interface for interacting with VBase
 type VBase interface {
 	GetFile(bucket, path string) (*gentleman.Response, string, error)
-	GetJSON(bucket, key string, data interface{}) (string, error)
+	GetJSON(bucket, path string, data interface{}) (string, error)
 	ListFiles(bucket string, options *Options) (*FileListResponse, string, error)
 	ListAllFiles(bucket, prefix string) (*FileListResponse, string, error)
 
 	SaveFile(bucket, path string, body io.Reader, opts SaveFileOptions) (string, error)
 	SaveFileB(bucket, path string, content []byte, opts SaveFileOptions) (string, error)
-	SaveJSON(bucket, key string, data interface{}) (string, error)
+	SaveJSON(bucket, path string, data interface{}) (string, error)
 	DeleteFile(bucket, path string) error
 	DeleteAllFiles(bucket string) error
 
 	GetBucket(bucket string) (*BucketResponse, string, error)
 	SetBucketState(bucket, state string) (string, error)
-	GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error)
+
+	ListAllConflicts(bucket string) ([]*Conflict, error)
+	ResolveConflicts(bucket string, patch PatchRequest) error
 }
 
 // VBaseWithFallback is an interface for interacting with VBase with fallback to Metadata
@@ -87,6 +88,7 @@ const (
 	pathToBucketState = "/buckets/%v/%v/state"
 	pathToFileList    = "/buckets/%v/%v/files"
 	pathToFile        = "/buckets/%v/%v/files/%v"
+	pathToConflicts   = "/buckets/%v/%v/conflicts"
 )
 
 // GetBucket describes the current state of a bucket
@@ -150,27 +152,6 @@ func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, err
 	}
 
 	return res, res.Header.Get(clients.HeaderETag), nil
-}
-
-// GetFileConflict gets a file's content as a byte slice, or conflict
-func (cl *client) GetFileConflict(bucket, path string) (*gentleman.Response, *Conflict, string, error) {
-	req := cl.http.Get().
-		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		Use(headers.Set("x-conflict-resolution", "merge"))
-
-	res, err := req.Send()
-	if err != nil {
-		if err, ok := err.(clients.ResponseError); ok && err.StatusCode == 409 {
-			var conflict Conflict
-			if err := res.JSON(&conflict); err != nil {
-				return nil, nil, "", err
-			}
-			return nil, &conflict, res.Header.Get(clients.HeaderETag), nil
-		}
-		return nil, nil, "", err
-	}
-
-	return res, nil, res.Header.Get(clients.HeaderETag), nil
 }
 
 // SaveJSON saves generic data serializing it to JSON
@@ -262,6 +243,30 @@ func (cl *client) ListAllFiles(bucket, prefix string) (*FileListResponse, string
 		eTag = newETag
 	}
 	return list, eTag, nil
+}
+
+func (cl *client) ListAllConflicts(bucket string) ([]*Conflict, error) {
+	res, err := cl.http.Get().
+		AddPath(fmt.Sprintf(pathToConflicts, cl.appName, bucket)).
+		Send()
+	if err != nil {
+		return nil, err
+	}
+
+	var response ConflictListResponse
+	if err := res.JSON(&response); err != nil {
+		return nil, fmt.Errorf("Error unmarshaling conflicts list: %v", err)
+	}
+
+	return response.Data, nil
+}
+
+func (cl *client) ResolveConflicts(bucket string, patch PatchRequest) error {
+	_, err := cl.http.Patch().
+		AddPath(fmt.Sprintf(pathToConflicts, cl.appName, bucket)).
+		JSON(patch).
+		Send()
+	return err
 }
 
 // DeleteFile deletes a file from the workspace
