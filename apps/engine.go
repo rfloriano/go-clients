@@ -3,6 +3,8 @@ package apps
 import (
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/vtex/go-clients/clients"
 	"gopkg.in/h2non/gentleman.v1"
@@ -12,12 +14,22 @@ import (
 
 // Apps is an interface for interacting with apps
 type Apps interface {
+	ListApps(opt ListAppsOptions) ([]*ActiveApp, string, error)
 	GetApp(app, parentID string) (*ActiveApp, string, error)
 	ListFiles(app, parentID string) (*FileList, string, error)
 	GetFile(app, parentID, path string) (io.ReadCloser, string, error)
 	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
-	GetDependencies() (map[string][]string, string, error)
-	GetRootApps() (*RootAppList, error)
+	LegacyGetDependencies() (map[string][]string, string, error)
+	LegacyGetRootApps() (*RootAppList, error)
+}
+
+// Use `Fields` to specify which data should contain on apps list.
+// It's possible to get all fields sending `[]string{"*"}`.
+type ListAppsOptions struct {
+	Fields      []string
+	RootOnly    bool
+	DependentOn string
+	Category    string
 }
 
 // Client is a struct that provides interaction with apps
@@ -34,6 +46,7 @@ func NewAppsClient(config *clients.Config) Apps {
 const (
 	pathToDependencies = "/dependencies"
 	pathToRootApps     = "/apps"
+	pathToListApps     = "/v2/apps"
 	pathToApp          = "/apps/%v"
 	pathToFiles        = "/apps/%v/files"
 	pathToFile         = "/apps/%v/files/%v"
@@ -100,7 +113,54 @@ func (cl *AppsClient) GetBundle(app, parentID, rootFolder string) (io.ReadCloser
 	return res, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *AppsClient) GetDependencies() (map[string][]string, string, error) {
+func addParent(parentID string) plugin.Plugin {
+	return plugin.NewRequestPlugin(func(ctx *context.Context, h context.Handler) {
+		if parentID != "" {
+			query := ctx.Request.URL.Query()
+			query.Set("parent", parentID)
+			ctx.Request.URL.RawQuery = query.Encode()
+		}
+		h.Next(ctx)
+	})
+}
+
+func (cl *AppsClient) ListApps(opt ListAppsOptions) ([]*ActiveApp, string, error) {
+	req := cl.http.Get().
+		AddPath(pathToListApps)
+
+	req = addQueriesToAppsRequest(opt, req)
+
+	res, err := req.Send()
+	if err != nil {
+		return nil, "", err
+	}
+
+	var apps AppList
+	if err := res.JSON(&apps); err != nil {
+		return nil, "", err
+	}
+
+	return apps.Apps, res.Header.Get(clients.HeaderETag), nil
+}
+
+func addQueriesToAppsRequest(opt ListAppsOptions, req *gentleman.Request) *gentleman.Request {
+	if opt.RootOnly {
+		req = req.AddQuery("rootOnly", strconv.FormatBool(opt.RootOnly))
+	}
+	if opt.DependentOn != "" {
+		req = req.AddQuery("dependentOn", opt.DependentOn)
+	}
+	if opt.Category != "" {
+		req = req.AddQuery("category", opt.Category)
+	}
+	if len(opt.Fields) > 0 {
+		req = req.AddQuery("fields", strings.Join(opt.Fields, ","))
+	}
+
+	return req
+}
+
+func (cl *AppsClient) LegacyGetDependencies() (map[string][]string, string, error) {
 	res, err := cl.http.Get().
 		AddPath(pathToDependencies).
 		Send()
@@ -116,18 +176,7 @@ func (cl *AppsClient) GetDependencies() (map[string][]string, string, error) {
 	return dependencies, res.Header.Get(clients.HeaderETag), err
 }
 
-func addParent(parentID string) plugin.Plugin {
-	return plugin.NewRequestPlugin(func(ctx *context.Context, h context.Handler) {
-		if parentID != "" {
-			query := ctx.Request.URL.Query()
-			query.Set("parent", parentID)
-			ctx.Request.URL.RawQuery = query.Encode()
-		}
-		h.Next(ctx)
-	})
-}
-
-func (cl *AppsClient) GetRootApps() (*RootAppList, error) {
+func (cl *AppsClient) LegacyGetRootApps() (*RootAppList, error) {
 	res, err := cl.http.Get().
 		AddPath(pathToRootApps).
 		Send()

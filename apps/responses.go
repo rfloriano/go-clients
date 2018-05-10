@@ -22,6 +22,7 @@ type DependencyTree map[string]DependencyTree
 
 // ActiveApp represents an active app's metadata
 type ActiveApp struct {
+	ID                   string            `json:"id"`
 	Vendor               string            `json:"vendor"`
 	Name                 string            `json:"name"`
 	Version              string            `json:"version"`
@@ -33,7 +34,6 @@ type ActiveApp struct {
 	SettingsSchema       interface{}       `json:"settingsSchema"`
 	CredentialType       string            `json:"credentialType"`
 	Policies             interface{}       `json:"policies"`
-	ID                   string            `json:"_id"`
 	DependencyTree       DependencyTree    `json:"_dependencyTree"`
 	DependencySet        []string          `json:"_dependencySet"`
 	ActivationDate       string            `json:"_activationDate"`
@@ -44,6 +44,7 @@ type ActiveApp struct {
 
 // PublishedApp represents a published app's metadata
 type PublishedApp struct {
+	ID               string            `json:"id"`
 	Vendor           string            `json:"vendor"`
 	Name             string            `json:"name"`
 	Version          string            `json:"version"`
@@ -55,12 +56,10 @@ type PublishedApp struct {
 	SettingsSchema   interface{}       `json:"settingsSchema"`
 	CredentialType   string            `json:"credentialType"`
 	Policies         interface{}       `json:"policies"`
-	ID               string            `json:"_id"`
 	Publisher        string            `json:"_publisher"`
 	PublicationDate  string            `json:"_publicationDate"`
 }
 
-// RootApp represents the app data when it's requested the list of root apps
 type RootApp struct {
 	Apps     string `json:"app"`
 	ID       string `json:"id"`
@@ -69,4 +68,8 @@ type RootApp struct {
 
 type RootAppList struct {
 	Apps []*RootApp `json:"data"`
+}
+
+type AppList struct {
+	Apps []*ActiveApp `json:"apps"`
 }
