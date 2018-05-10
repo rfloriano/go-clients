@@ -34,6 +34,7 @@ type ActiveApp struct {
 	SettingsSchema       interface{}       `json:"settingsSchema"`
 	CredentialType       string            `json:"credentialType"`
 	Policies             interface{}       `json:"policies"`
+	IsRoot               *bool             `json:"_isRoot,omitempty"`
 	DependencyTree       DependencyTree    `json:"_dependencyTree"`
 	DependencySet        []string          `json:"_dependencySet"`
 	ActivationDate       string            `json:"_activationDate"`
