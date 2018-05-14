@@ -35,11 +35,9 @@ type ActiveApp struct {
 	CredentialType       string            `json:"credentialType"`
 	Policies             interface{}       `json:"policies"`
 	Link                 string            `json:"link,omitempty"`
+	Registry             string            `json:"registry,omitempty"`
 	IsRoot               *bool             `json:"_isRoot,omitempty"`
-	DependencyTree       DependencyTree    `json:"_dependencyTree"`
-	DependencySet        []string          `json:"_dependencySet"`
 	ActivationDate       string            `json:"_activationDate"`
-	Registry             string            `json:"_registry,omitempty"`
 	ResolvedDependencies map[string]string `json:"_resolvedDependencies"`
 }
 
