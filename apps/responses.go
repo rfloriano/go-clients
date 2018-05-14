@@ -34,11 +34,11 @@ type ActiveApp struct {
 	SettingsSchema       interface{}       `json:"settingsSchema"`
 	CredentialType       string            `json:"credentialType"`
 	Policies             interface{}       `json:"policies"`
+	Link                 string            `json:"link,omitempty"`
 	IsRoot               *bool             `json:"_isRoot,omitempty"`
 	DependencyTree       DependencyTree    `json:"_dependencyTree"`
 	DependencySet        []string          `json:"_dependencySet"`
 	ActivationDate       string            `json:"_activationDate"`
-	Link                 string            `json:"_link,omitempty"`
 	Registry             string            `json:"_registry,omitempty"`
 	ResolvedDependencies map[string]string `json:"_resolvedDependencies"`
 }
