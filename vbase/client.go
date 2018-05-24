@@ -10,7 +10,9 @@ import (
 
 	"github.com/vtex/go-clients/clients"
 	"github.com/vtex/go-clients/metadata"
-	"gopkg.in/h2non/gentleman.v1"
+	gentleman "gopkg.in/h2non/gentleman.v1"
+	"gopkg.in/h2non/gentleman.v1/context"
+	"gopkg.in/h2non/gentleman.v1/plugin"
 )
 
 type Options struct {
@@ -38,7 +40,6 @@ type VBase interface {
 	DeleteAllFiles(bucket string) error
 
 	GetBucket(bucket string) (*BucketResponse, string, error)
-	SetBucketState(bucket, state string) (string, error)
 
 	ListAllConflicts(bucket string) ([]*Conflict, error)
 	ResolveConflicts(bucket string, patch PatchRequest) error
@@ -50,9 +51,14 @@ type VBaseWithFallback interface {
 	GetJSONWithFallback(vbaseBucket, metadataBucket, key string, data interface{}) (string, error)
 }
 
+type ConflictResolver interface {
+	Resolve(client VBase, bucket string) (resolved bool, err error)
+}
+
 type client struct {
-	http    *gentleman.Client
-	appName string
+	http             *gentleman.Client
+	appName          string
+	conflictResolver ConflictResolver
 }
 
 type clientWithFallback struct {
@@ -61,18 +67,18 @@ type clientWithFallback struct {
 }
 
 // NewClient creates a new Workspaces client
-func NewClient(config *clients.Config) (VBase, error) {
+func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error) {
 	cl := clients.CreateClient("vbase", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
-	return &client{cl, appName}, nil
+	return &client{cl, appName, cResolver}, nil
 }
 
 // NewClientFallback creates a new Workspaces client with fallback to Metadata
-func NewClientFallback(vbaseConfig, metadataConfig *clients.Config) (VBaseWithFallback, error) {
-	cl, err := NewClient(vbaseConfig)
+func NewClientFallback(vbaseConfig, metadataConfig *clients.Config, cResolver ConflictResolver) (VBaseWithFallback, error) {
+	cl, err := NewClient(vbaseConfig, cResolver)
 	if err != nil {
 		return nil, err
 	}
@@ -84,17 +90,18 @@ func NewClientFallback(vbaseConfig, metadataConfig *clients.Config) (VBaseWithFa
 }
 
 const (
-	pathToBucket      = "/buckets/%v/%v"
-	pathToBucketState = "/buckets/%v/%v/state"
-	pathToFileList    = "/buckets/%v/%v/files"
-	pathToFile        = "/buckets/%v/%v/files/%v"
-	pathToConflicts   = "/buckets/%v/%v/conflicts"
+	pathToBucket    = "/buckets/%v/%v"
+	pathToFileList  = "/buckets/%v/%v/files"
+	pathToFile      = "/buckets/%v/%v/files/%v"
+	pathToConflicts = "/buckets/%v/%v/conflicts"
 )
 
 // GetBucket describes the current state of a bucket
 func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
-		AddPath(fmt.Sprintf(pathToBucket, cl.appName, bucket)).Send()
+		AddPath(fmt.Sprintf(pathToBucket, cl.appName, bucket)).
+		Use(conflictHandler(cl, bucket)).
+		Send()
 	if err != nil {
 		return nil, "", err
 	}
@@ -105,18 +112,6 @@ func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	}
 
 	return &bucketResponse, res.Header.Get(clients.HeaderETag), nil
-}
-
-// SetBucketState sets the current state of a bucket
-func (cl *client) SetBucketState(bucket, state string) (string, error) {
-	_, err := cl.http.Put().
-		AddPath(fmt.Sprintf(pathToBucketState, cl.appName, bucket)).
-		JSON(state).Send()
-	if err != nil {
-		return "", err
-	}
-
-	return "", nil
 }
 
 // GetJSON populates data with the content of the specified file, assuming it is serialized as JSON
@@ -146,7 +141,10 @@ func (cl *clientWithFallback) GetJSONWithFallback(vbaseBucket, metadataBucket, p
 
 // GetFile gets a file's content as a read closer
 func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
-	res, err := cl.http.Get().AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).Send()
+	res, err := cl.http.Get().
+		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
+		Use(conflictHandler(cl, bucket)).
+		Send()
 	if err != nil {
 		return nil, res.Header.Get(clients.HeaderETag), err
 	}
@@ -158,7 +156,8 @@ func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, err
 func (cl *client) SaveJSON(bucket, path string, data interface{}) (string, error) {
 	res, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		JSON(data).Send()
+		JSON(data).Use(conflictHandler(cl, bucket)).
+		Send()
 
 	if err != nil {
 		return "", err
@@ -177,7 +176,7 @@ func (cl *client) SaveFile(bucket, path string, body io.Reader, opts SaveFileOpt
 		req = req.SetHeader("Content-Type", opts.ContentType)
 	}
 
-	res, err := req.Send()
+	res, err := req.Use(conflictHandler(cl, bucket)).Send()
 	if err != nil {
 		return "", err
 	}
@@ -201,7 +200,9 @@ func (cl *client) ListFiles(bucket string, options *Options) (*FileListResponse,
 			"prefix": options.Prefix,
 			"_next":  options.Marker,
 			"_limit": strconv.Itoa(options.Limit),
-		}).Send()
+		}).
+		Use(conflictHandler(cl, bucket)).
+		Send()
 
 	if err != nil {
 		return nil, "", err
@@ -273,6 +274,7 @@ func (cl *client) ResolveConflicts(bucket string, patch PatchRequest) error {
 func (cl *client) DeleteFile(bucket, path string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
+		Use(conflictHandler(cl, bucket)).
 		Send()
 
 	return err
@@ -282,7 +284,44 @@ func (cl *client) DeleteFile(bucket, path string) error {
 func (cl *client) DeleteAllFiles(bucket string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFileList, cl.appName, bucket)).
+		Use(conflictHandler(cl, bucket)).
 		Send()
 
 	return err
+}
+
+func conflictHandler(cl *client, bucket string) plugin.Plugin {
+	p := plugin.New()
+	if cl.conflictResolver == nil {
+		return p
+	}
+
+	reqCopy := &http.Request{}
+	p.SetHandlers(plugin.Handlers{
+		"before dial": func(c *context.Context, h context.Handler) {
+			c.Request.Header.Set("X-Vtex-Detect-Conflicts", "true")
+			*reqCopy = *c.Request
+			h.Next(c)
+		},
+		"after dial": func(c *context.Context, h context.Handler) {
+			if c.Response.StatusCode == http.StatusConflict {
+				resolved, err := cl.conflictResolver.Resolve(cl, bucket)
+				if err != nil {
+					h.Error(c, fmt.Errorf("Error resolving conflicts in bucket %s: %v", bucket, err))
+				} else if !resolved {
+					h.Error(c, fmt.Errorf("Conflicts could not be solved in bucket %s", bucket))
+				}
+
+				// Retry
+				res, err := c.Client.Do(reqCopy)
+				c.Response = res
+				if err != nil {
+					h.Error(c, err)
+				}
+			}
+
+			h.Next(c)
+		},
+	})
+	return p
 }

@@ -8,7 +8,7 @@ type BucketResponse struct {
 	State string `json:"state"`
 }
 
-// FileListEntryResponse is the description of an entry in a FileListResponse
+// FileEntryResponse is the description of an entry in a FileListResponse
 type FileEntryResponse struct {
 	Path  string          `json:"path"`
 	Hash  string          `json:"hash"`
@@ -26,15 +26,18 @@ type ConflictListResponse struct {
 	Data []*Conflict `json:"data"`
 }
 
-// Conflict a 409 response's payload
+// Conflict contains multiple versions of a file
 type Conflict struct {
-	Key    string         `json:"key"`
-	Master *ConflictEntry `json:"master"`
+	Path   string         `json:"path"`
 	Base   *ConflictEntry `json:"base"`
 	Mine   *ConflictEntry `json:"mine"`
+	Master *ConflictEntry `json:"master"`
 }
 
-// ConflictEntry is a Conflict's item
+// ConflictEntry holds a version (base, mine or master) of the conflicted file
 type ConflictEntry struct {
-	Value json.RawMessage `json:"value"`
+	Deleted        bool            `json:"deleted"`
+	MIMEType       string          `json:"mimeType"`
+	Content        json.RawMessage `json:"content"`
+	ContentOmitted bool            `json:"contentOmitted"`
 }
