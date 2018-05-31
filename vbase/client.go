@@ -56,9 +56,10 @@ type ConflictResolver interface {
 }
 
 type client struct {
-	http             *gentleman.Client
-	appName          string
-	conflictResolver ConflictResolver
+	http               *gentleman.Client
+	appName            string
+	conflictResolver   ConflictResolver
+	resolvingConflicts bool
 }
 
 type clientWithFallback struct {
@@ -73,7 +74,7 @@ func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
-	return &client{cl, appName, cResolver}, nil
+	return &client{cl, appName, cResolver, false}, nil
 }
 
 // NewClientFallback creates a new Workspaces client with fallback to Metadata
@@ -249,7 +250,7 @@ func (cl *client) ListAllFiles(bucket, prefix string) (*FileListResponse, string
 func (cl *client) ListAllConflicts(bucket string) ([]*Conflict, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToConflicts, cl.appName, bucket)).
-		Send()
+		Send() // No conflict handler plugin for getting conflicts
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +267,7 @@ func (cl *client) ResolveConflicts(bucket string, patch PatchRequest) error {
 	_, err := cl.http.Patch().
 		AddPath(fmt.Sprintf(pathToConflicts, cl.appName, bucket)).
 		JSON(patch).
-		Send()
+		Send() // No conflict handler plugin for resolving conflicts
 	return err
 }
 
@@ -292,7 +293,7 @@ func (cl *client) DeleteAllFiles(bucket string) error {
 
 func conflictHandler(cl *client, bucket string) plugin.Plugin {
 	p := plugin.New()
-	if cl.conflictResolver == nil {
+	if cl.conflictResolver == nil || cl.resolvingConflicts {
 		return p
 	}
 
@@ -305,7 +306,10 @@ func conflictHandler(cl *client, bucket string) plugin.Plugin {
 		},
 		"after dial": func(c *context.Context, h context.Handler) {
 			if c.Response.StatusCode == http.StatusConflict {
-				resolved, err := cl.conflictResolver.Resolve(cl, bucket)
+				clCopy := *cl
+				clCopy.resolvingConflicts = true
+
+				resolved, err := cl.conflictResolver.Resolve(&clCopy, bucket)
 				if err != nil {
 					h.Error(c, fmt.Errorf("Error resolving conflicts in bucket %s: %v", bucket, err))
 				} else if !resolved {
