@@ -36,8 +36,8 @@ type Conflict struct {
 
 // ConflictEntry holds a version (base, mine or master) of the conflicted file
 type ConflictEntry struct {
-	Deleted        bool            `json:"deleted"`
-	MIMEType       string          `json:"mimeType"`
-	Content        json.RawMessage `json:"content"`
-	ContentOmitted bool            `json:"contentOmitted"`
+	Deleted        bool   `json:"deleted"`
+	MIMEType       string `json:"mimeType"`
+	Content        []byte `json:"content"`
+	ContentOmitted bool   `json:"contentOmitted"`
 }

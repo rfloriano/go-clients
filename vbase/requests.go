@@ -1,7 +1,5 @@
 package vbase
 
-import "encoding/json"
-
 type PatchRequest []*PatchOperation
 
 type PatchOperation struct {
@@ -11,8 +9,8 @@ type PatchOperation struct {
 }
 
 type PatchValue struct {
-	MIMEType string          `json:"mimeType"`
-	Content  json.RawMessage `json:"content"`
+	MIMEType string `json:"mimeType"`
+	Content  []byte `json:"content"`
 }
 
 type OperationType string
