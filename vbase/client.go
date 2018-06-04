@@ -321,6 +321,7 @@ func conflictHandler(cl *client, bucket string) plugin.Plugin {
 				c.Response = res
 				if err != nil {
 					h.Error(c, err)
+					return
 				}
 			}
 
