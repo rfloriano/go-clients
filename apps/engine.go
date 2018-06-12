@@ -19,6 +19,7 @@ type Apps interface {
 	ListFiles(app, parentID string) (*FileList, string, error)
 	GetFile(app, parentID, path string) (io.ReadCloser, string, error)
 	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
+	ScheduleHousekeeping() error
 	LegacyGetDependencies() (map[string][]string, string, error)
 	LegacyGetRootApps() (*RootAppList, error)
 }
@@ -51,6 +52,7 @@ const (
 	pathToFiles        = "/apps/%v/files"
 	pathToFile         = "/apps/%v/files/%v"
 	pathToBundle       = "/apps/%v/bundle/%v"
+	pathToHousekeeping = "/_housekeeping/schedule"
 )
 
 // GetApp describes an installed app's manifest
@@ -158,6 +160,13 @@ func addQueriesToAppsRequest(opt ListAppsOptions, req *gentleman.Request) *gentl
 	}
 
 	return req
+}
+
+func (cl *AppsClient) ScheduleHousekeeping() error {
+	_, err := cl.http.Post().
+		AddPath(pathToHousekeeping).
+		Send()
+	return err
 }
 
 func (cl *AppsClient) LegacyGetDependencies() (map[string][]string, string, error) {
