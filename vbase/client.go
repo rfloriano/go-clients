@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 
 	"strconv"
@@ -22,8 +23,9 @@ type Options struct {
 }
 
 type SaveFileOptions struct {
-	ContentType string
-	Unzip       bool
+	ContentType     string
+	Unzip           bool
+	IgnoreConflicts bool
 }
 
 // VBase is an interface for interacting with VBase
@@ -58,6 +60,7 @@ type ConflictResolver interface {
 type client struct {
 	http               *gentleman.Client
 	appName            string
+	workspace          string
 	conflictResolver   ConflictResolver
 	resolvingConflicts bool
 }
@@ -74,7 +77,7 @@ func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
-	return &client{cl, appName, cResolver, false}, nil
+	return &client{cl, appName, config.Workspace, cResolver, false}, nil
 }
 
 // NewClientFallback creates a new Workspaces client with fallback to Metadata
@@ -101,7 +104,7 @@ const (
 func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToBucket, cl.appName, bucket)).
-		Use(conflictHandler(cl, bucket)).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 	if err != nil {
 		return nil, "", err
@@ -144,7 +147,7 @@ func (cl *clientWithFallback) GetJSONWithFallback(vbaseBucket, metadataBucket, p
 func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		Use(conflictHandler(cl, bucket)).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 	if err != nil {
 		return nil, res.Header.Get(clients.HeaderETag), err
@@ -157,7 +160,8 @@ func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, err
 func (cl *client) SaveJSON(bucket, path string, data interface{}) (string, error) {
 	res, err := cl.http.Put().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		JSON(data).Use(conflictHandler(cl, bucket)).
+		JSON(data).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 
 	if err != nil {
@@ -177,7 +181,11 @@ func (cl *client) SaveFile(bucket, path string, body io.Reader, opts SaveFileOpt
 		req = req.SetHeader("Content-Type", opts.ContentType)
 	}
 
-	res, err := req.Use(conflictHandler(cl, bucket)).Send()
+	if !opts.IgnoreConflicts {
+		req = req.Use(cl.conflictHandler(bucket))
+	}
+
+	res, err := req.Send()
 	if err != nil {
 		return "", err
 	}
@@ -202,7 +210,7 @@ func (cl *client) ListFiles(bucket string, options *Options) (*FileListResponse,
 			"_next":  options.Marker,
 			"_limit": strconv.Itoa(options.Limit),
 		}).
-		Use(conflictHandler(cl, bucket)).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 
 	if err != nil {
@@ -275,7 +283,7 @@ func (cl *client) ResolveConflicts(bucket string, patch PatchRequest) error {
 func (cl *client) DeleteFile(bucket, path string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
-		Use(conflictHandler(cl, bucket)).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 
 	return err
@@ -285,23 +293,29 @@ func (cl *client) DeleteFile(bucket, path string) error {
 func (cl *client) DeleteAllFiles(bucket string) error {
 	_, err := cl.http.Delete().
 		AddPath(fmt.Sprintf(pathToFileList, cl.appName, bucket)).
-		Use(conflictHandler(cl, bucket)).
+		Use(cl.conflictHandler(bucket)).
 		Send()
 
 	return err
 }
 
-func conflictHandler(cl *client, bucket string) plugin.Plugin {
+func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 	p := plugin.New()
-	if cl.conflictResolver == nil || cl.resolvingConflicts {
+	if cl.conflictResolver == nil || cl.resolvingConflicts || cl.workspace == clients.MasterWorkspace {
 		return p
 	}
 
-	reqCopy := &http.Request{}
+	var reqCopy *http.Request
 	p.SetHandlers(plugin.Handlers{
 		"before dial": func(c *context.Context, h context.Handler) {
 			c.Request.Header.Set("X-Vtex-Detect-Conflicts", "true")
-			*reqCopy = *c.Request
+
+			var err error
+			reqCopy, err = copyRequest(c.Request)
+			if err != nil {
+				h.Error(c, err)
+			}
+
 			h.Next(c)
 		},
 		"after dial": func(c *context.Context, h context.Handler) {
@@ -329,4 +343,22 @@ func conflictHandler(cl *client, bucket string) plugin.Plugin {
 		},
 	})
 	return p
+}
+
+func copyRequest(req *http.Request) (*http.Request, error) {
+	reqCopy := &http.Request{}
+	*reqCopy = *req
+
+	if req.Body == nil {
+		return reqCopy, nil
+	}
+
+	buf, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	req.Body = ioutil.NopCloser(bytes.NewReader(buf))
+	reqCopy.Body = ioutil.NopCloser(bytes.NewReader(buf))
+
+	return reqCopy, nil
 }

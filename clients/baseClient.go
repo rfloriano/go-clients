@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	HeaderETag   = "ETag"
-	startTimeKey = "startTime"
+	MasterWorkspace = "master"
+	HeaderETag      = "ETag"
+	startTimeKey    = "startTime"
 )
 
 type RequestRecorder interface {
@@ -128,7 +129,7 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 			//Every response with status code >= 400 is transformed to an Error
 			//by the middleware "responseErrors". That's why this code is not inside
 			//of response handler.
-			if c.Response.StatusCode == http.StatusNotFound {
+			if c.Response != nil && c.Response.StatusCode == http.StatusNotFound {
 				recordResponse(recorder, c)
 			}
 			h.Next(c)
@@ -138,8 +139,10 @@ func requestRecorder(recorder RequestRecorder) plugin.Plugin {
 }
 
 func recordResponse(recorder RequestRecorder, c *context.Context) {
-	responseTime := time.Since(c.Get(startTimeKey).(time.Time))
-	recorder.Record(c.Request, c.Response, responseTime)
+	if startTime, ok := c.GetOk(startTimeKey); ok {
+		responseTime := time.Since(startTime.(time.Time))
+		recorder.Record(c.Request, c.Response, responseTime)
+	}
 }
 
 func endpoint(service string, config *Config) string {
