@@ -332,10 +332,13 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 
 				// Retry
 				res, err := c.Client.Do(reqCopy)
-				c.Response = res
-				if err != nil {
-					h.Error(c, err)
+				if err != nil || res == nil {
+					h.Error(c, fmt.Errorf("Error retrying request after conflicts resolution"))
 					return
+				}
+				c.Response = res
+				if res.StatusCode == http.StatusConflict {
+					h.Error(c, fmt.Errorf("Bucket %s still has conflicts after resolution", bucket))
 				}
 			}
 
