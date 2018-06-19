@@ -9,6 +9,7 @@ import (
 
 	"strconv"
 
+	"github.com/pkg/errors"
 	"github.com/vtex/go-clients/clients"
 	"github.com/vtex/go-clients/metadata"
 	gentleman "gopkg.in/h2non/gentleman.v1"
@@ -332,13 +333,17 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 
 				// Retry
 				res, err := c.Client.Do(reqCopy)
-				if err != nil || res == nil {
-					h.Error(c, fmt.Errorf("Error retrying request after conflicts resolution"))
+				if err != nil {
+					h.Error(c, errors.Wrap(err, "Error retrying request after conflicts resolution"))
+					return
+				}
+				if res == nil {
+					h.Error(c, errors.Errorf("Nil response retrying request after conflicts resolution"))
 					return
 				}
 				c.Response = res
 				if res.StatusCode == http.StatusConflict {
-					h.Error(c, fmt.Errorf("Bucket %s still has conflicts after resolution", bucket))
+					h.Error(c, errors.Errorf("Bucket %s still has conflicts after resolution", bucket))
 				}
 			}
 
