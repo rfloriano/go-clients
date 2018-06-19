@@ -344,7 +344,9 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 				c.Response = res
 				if res.StatusCode == http.StatusConflict {
 					h.Error(c, errors.Errorf("Bucket %s still has conflicts after resolution", bucket))
+					return
 				}
+				res.Header.Set("X-Vtex-Solved-Conflicts", "true")
 			}
 
 			h.Next(c)
