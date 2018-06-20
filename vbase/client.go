@@ -308,7 +308,7 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 
 	var reqCopy *http.Request
 	p.SetHandlers(plugin.Handlers{
-		"before dial": func(c *context.Context, h context.Handler) {
+		"request": func(c *context.Context, h context.Handler) {
 			c.Request.Header.Set("X-Vtex-Detect-Conflicts", "true")
 
 			var err error
