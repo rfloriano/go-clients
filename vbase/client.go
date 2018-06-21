@@ -315,35 +315,25 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 			reqCopy, err = copyRequest(c.Request)
 			if err != nil {
 				h.Error(c, err)
+				return
 			}
 
 			h.Next(c)
 		},
 		"after dial": func(c *context.Context, h context.Handler) {
 			if c.Response.StatusCode == http.StatusConflict {
-				clCopy := *cl
-				clCopy.resolvingConflicts = true
-
-				resolved, err := cl.conflictResolver.Resolve(&clCopy, bucket)
-				if err != nil {
-					h.Error(c, fmt.Errorf("Error resolving conflicts in bucket %s: %v", bucket, err))
-				} else if !resolved {
-					h.Error(c, fmt.Errorf("Conflicts could not be solved in bucket %s", bucket))
+				if err := cl.resolveConflicts(bucket); err != nil {
+					h.Error(c, err)
+					return
 				}
 
 				// Retry
-				res, err := c.Client.Do(reqCopy)
+				res, err := retryRequest(c.Client, reqCopy, bucket)
+				if res != nil {
+					c.Response = res
+				}
 				if err != nil {
-					h.Error(c, errors.Wrap(err, "Error retrying request after conflicts resolution"))
-					return
-				}
-				if res == nil {
-					h.Error(c, errors.Errorf("Nil response retrying request after conflicts resolution"))
-					return
-				}
-				c.Response = res
-				if res.StatusCode == http.StatusConflict {
-					h.Error(c, errors.Errorf("Bucket %s still has conflicts after resolution", bucket))
+					h.Error(c, err)
 					return
 				}
 				res.Header.Set("X-Vtex-Solved-Conflicts", "true")
@@ -371,4 +361,32 @@ func copyRequest(req *http.Request) (*http.Request, error) {
 	reqCopy.Body = ioutil.NopCloser(bytes.NewReader(buf))
 
 	return reqCopy, nil
+}
+
+func (cl *client) resolveConflicts(bucket string) error {
+	clCopy := *cl
+	clCopy.resolvingConflicts = true
+
+	resolved, err := cl.conflictResolver.Resolve(&clCopy, bucket)
+	if err != nil {
+		return errors.Wrapf(err, "Error resolving conflicts in bucket %s", bucket)
+	} else if !resolved {
+		return fmt.Errorf("Conflicts could not be solved in bucket %s", bucket)
+	}
+	return nil
+}
+
+func retryRequest(client *http.Client, req *http.Request, bucket string) (*http.Response, error) {
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error retrying request after conflicts resolution")
+	}
+	if res == nil {
+		return nil, errors.Errorf("Nil response retrying request after conflicts resolution")
+	}
+
+	if res.StatusCode == http.StatusConflict {
+		return res, errors.Errorf("Bucket %s still has conflicts after resolution", bucket)
+	}
+	return res, nil
 }
