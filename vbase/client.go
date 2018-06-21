@@ -336,7 +336,7 @@ func (cl *client) conflictHandler(bucket string) plugin.Plugin {
 					h.Error(c, err)
 					return
 				}
-				res.Header.Set("X-Vtex-Solved-Conflicts", "true")
+				res.Header.Set("X-Vtex-Solved-Conflicts", bucket)
 			}
 
 			h.Next(c)
