@@ -11,7 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/vtex/go-clients/clients"
-	"github.com/vtex/go-clients/metadata"
 	gentleman "gopkg.in/h2non/gentleman.v1"
 	"gopkg.in/h2non/gentleman.v1/context"
 	"gopkg.in/h2non/gentleman.v1/plugin"
@@ -48,12 +47,6 @@ type VBase interface {
 	ResolveConflicts(bucket string, patch PatchRequest) error
 }
 
-// VBaseWithFallback is an interface for interacting with VBase with fallback to Metadata
-type VBaseWithFallback interface {
-	VBase
-	GetJSONWithFallback(vbaseBucket, metadataBucket, key string, data interface{}) (string, error)
-}
-
 type ConflictResolver interface {
 	Resolve(client VBase, bucket string) (resolved bool, err error)
 }
@@ -66,11 +59,6 @@ type client struct {
 	resolvingConflicts bool
 }
 
-type clientWithFallback struct {
-	*client
-	metadata metadata.Metadata
-}
-
 // NewClient creates a new Workspaces client
 func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error) {
 	cl := clients.CreateClient("vbase", config, true)
@@ -79,19 +67,6 @@ func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
 	return &client{cl, appName, config.Workspace, cResolver, false}, nil
-}
-
-// NewClientFallback creates a new Workspaces client with fallback to Metadata
-func NewClientFallback(vbaseConfig, metadataConfig *clients.Config, cResolver ConflictResolver) (VBaseWithFallback, error) {
-	cl, err := NewClient(vbaseConfig, cResolver)
-	if err != nil {
-		return nil, err
-	}
-	clMetadata, err := metadata.NewClient(metadataConfig, nil)
-	if err != nil {
-		return nil, err
-	}
-	return &clientWithFallback{cl.(*client), clMetadata}, nil
 }
 
 const (
@@ -131,17 +106,6 @@ func (cl *client) GetJSON(bucket, path string, data interface{}) (string, error)
 	}
 
 	return etag, nil
-}
-
-func (cl *clientWithFallback) GetJSONWithFallback(vbaseBucket, metadataBucket, path string, data interface{}) (string, error) {
-	etag, err := cl.GetJSON(vbaseBucket, path, data)
-	if rerr, ok := err.(clients.ResponseError); ok && rerr.StatusCode == http.StatusNotFound {
-		etag, err = cl.metadata.Get(metadataBucket, path, data)
-		if err == nil {
-			etag, err = cl.SaveJSON(vbaseBucket, path, data)
-		}
-	}
-	return etag, err
 }
 
 // GetFile gets a file's content as a read closer
