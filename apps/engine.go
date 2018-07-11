@@ -52,7 +52,7 @@ const (
 	pathToFiles        = "/apps/%v/files"
 	pathToFile         = "/apps/%v/files/%v"
 	pathToBundle       = "/apps/%v/bundle/%v"
-	pathToHousekeeping = "/_housekeeping/schedule"
+	pathToHousekeeping = "/v2/_housekeeping/schedule"
 )
 
 // GetApp describes an installed app's manifest
