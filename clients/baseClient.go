@@ -42,8 +42,12 @@ type Config struct {
 	Transport http.RoundTripper
 }
 
+func CreateAppClient(vendor, name string, config *Config) *gentleman.Client {
+	return CreateGenericClient(appEndpoint(vendor, name, config.Region), config, true)
+}
+
 func CreateClient(service string, config *Config, workspaceBound bool) *gentleman.Client {
-	return CreateGenericClient(endpoint(service, config), config, workspaceBound)
+	return CreateGenericClient(infraEndpoint(service, config.Region), config, workspaceBound)
 }
 
 func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentleman.Client {
@@ -63,7 +67,9 @@ func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentl
 		cl = cl.Use(requestRecorder(config.Recorder))
 	}
 
-	if url != "" {
+	if config.Endpoint != "" {
+		cl = cl.URL(config.Endpoint)
+	} else if url != "" {
 		cl = cl.URL(url)
 	}
 
@@ -145,14 +151,12 @@ func recordResponse(recorder RequestRecorder, c *context.Context) {
 	}
 }
 
-func endpoint(service string, config *Config) string {
-	if config.Endpoint != "" {
-		return config.Endpoint
-	} else if service != "" {
-		return fmt.Sprintf("http://%s.%s.vtex.io", service, config.Region)
-	} else {
-		return ""
-	}
+func appEndpoint(vendor, name, region string) string {
+	return fmt.Sprintf("http://%s.%s.%s.vtex.io", name, vendor, region)
+}
+
+func infraEndpoint(service, region string) string {
+	return fmt.Sprintf("http://%s.%s.vtex.io", service, region)
 }
 
 func basePath(config *Config, workspaceBound bool) string {
