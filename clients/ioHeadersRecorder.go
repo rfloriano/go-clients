@@ -82,6 +82,37 @@ func (r *IOHeadersRecorder) Record(req *http.Request, res *http.Response, respon
 	}
 }
 
+func (r *IOHeadersRecorder) CopyFrom(other *IOHeadersRecorder) {
+	// We grab an initial copy of the other data to avoid a potential deadlock
+	// if we grabbed locks of the 2 instances at the same time.
+	headersCopy, callTraceCopy := other.recordedDataCopy()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	copyHeaders(r.recordedHeaders, headersCopy)
+	r.callTrace = append(r.callTrace, callTraceCopy...)
+}
+
+func (r *IOHeadersRecorder) recordedDataCopy() (http.Header, []*CallTree) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	headers := make(http.Header, len(r.recordedHeaders))
+	copyHeaders(headers, r.recordedHeaders)
+
+	callTrace := make([]*CallTree, len(r.callTrace))
+	copy(callTrace, r.callTrace)
+
+	return headers, callTrace
+}
+
+func copyHeaders(dest, src http.Header) {
+	for name, values := range src {
+		dest[name] = append(dest[name], values...)
+	}
+}
+
 // AddResponseHeaders writes accumulated headers to an outgoing response
 func (r *IOHeadersRecorder) AddResponseHeaders(out http.Header) {
 	r.mu.RLock()
