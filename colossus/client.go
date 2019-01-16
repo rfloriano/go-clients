@@ -16,6 +16,7 @@ type Colossus interface {
 	SendLogB(subject, level string, body []byte) error
 	SendEvent(subject, key string, body interface{}, extraHeaders http.Header) error
 	SendLog(subject, key string, body interface{}, extraHeaders http.Header) error
+	SendKpis(app string, body interface{}) error
 }
 
 type Client struct {
@@ -30,6 +31,7 @@ func NewClient(config *clients.Config) Colossus {
 const (
 	eventPath = "/events/%v"
 	logPath   = "/logs/%v"
+	kpisPath  = "/metrics/%v/kpi"
 )
 
 func (cl *Client) SendEventJ(subject, key string, body interface{}) error {
@@ -72,6 +74,14 @@ func (cl *Client) SendLogB(subject, level string, body []byte) error {
 		AddPath(fmt.Sprintf(logPath, level)).
 		AddQuery("subject", subject).
 		Body(bytes.NewReader(body)).Send()
+
+	return err
+}
+
+func (cl *Client) SendKpis(app string, body interface{}) error {
+	_, err := cl.http.Post().
+		AddPath(fmt.Sprintf(kpisPath, app)).
+		JSON(body).Send()
 
 	return err
 }
