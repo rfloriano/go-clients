@@ -17,7 +17,7 @@ var (
 
 	enableTraceHeader     = header("X-Vtex-Trace-Enable")
 	traceHeader           = header("X-Call-Trace")
-	requestIDHeader       = header("X-Request-Id")
+	operationIDHeader     = header("X-Operation-Id")
 	smartCacheHeader      = header("X-Vtex-Meta")
 	solvedConflictsHeader = header("X-Vtex-Solved-Conflicts")
 
@@ -31,9 +31,12 @@ func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
 	}
 
 	enableTrace, _ := strconv.ParseBool(headers.Get(enableTraceHeader))
-	requestID := headers.Get(requestIDHeader)
-	if requestID == "" {
-		requestID = uuid.NewV4().String()
+	operationID := headers.Get(operationIDHeader)
+	if operationID == "" {
+		id, err := uuid.NewV4()
+		if err == nil {
+			operationID = id.String()
+		}
 	}
 
 	return &IOHeadersRecorder{
@@ -41,7 +44,7 @@ func NewIOHeadersRecorder(parent *http.Request) *IOHeadersRecorder {
 		recordedHeaders: http.Header{},
 		enableTrace:     enableTrace,
 		callTrace:       []*CallTree{},
-		requestID:       requestID,
+		operationID:     operationID,
 	}
 }
 
@@ -52,7 +55,7 @@ type IOHeadersRecorder struct {
 	recordedHeaders http.Header
 	enableTrace     bool
 	callTrace       []*CallTree
-	requestID       string
+	operationID     string
 
 	written bool
 }
@@ -61,7 +64,9 @@ func (r *IOHeadersRecorder) BeforeDial(req *http.Request) {
 	if r.enableTrace {
 		req.Header.Set(enableTraceHeader, "true")
 	}
-	req.Header.Set(requestIDHeader, r.requestID)
+	if r.operationID != "" {
+		req.Header.Set(operationIDHeader, r.operationID)
+	}
 }
 
 // Record records a request made in order to accumulate headers
