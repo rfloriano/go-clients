@@ -61,12 +61,16 @@ type client struct {
 
 // NewClient creates a new Workspaces client
 func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error) {
-	cl := clients.CreateClient("vbase", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
-	return &client{cl, appName, config.Workspace, cResolver, false}, nil
+	return NewCustomAppClient(appName, config, cResolver), nil
+}
+
+func NewCustomAppClient(appName string, config *clients.Config, cResolver ConflictResolver) VBase {
+	cl := clients.CreateClient("vbase", config, true)
+	return &client{cl, appName, config.Workspace, cResolver, false}
 }
 
 const (

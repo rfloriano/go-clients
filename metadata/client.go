@@ -52,12 +52,16 @@ type client struct {
 // resolver is optional but if set, will be called for each detected conflict in
 // metadata access methods to attempt a resolution logic.
 func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, error) {
-	cl := clients.CreateClient("kube-router", config, true)
 	appName := clients.UserAgentName(config)
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata client.")
 	}
-	return &client{cl, resolver, appName}, nil
+	return NewCustomAppClient(appName, config, resolver), nil
+}
+
+func NewCustomAppClient(appName string, config *clients.Config, resolver ConflictResolver) Metadata {
+	cl := clients.CreateClient("kube-router", config, true)
+	return &client{cl, resolver, appName}
 }
 
 const (
