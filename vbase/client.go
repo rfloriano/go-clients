@@ -63,7 +63,7 @@ type client struct {
 
 // NewClient creates a new Workspaces client
 func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error) {
-	appName := clients.UserAgentName(config)
+	appName := clients.UserAgentName(config.UserAgent)
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a VBase client.")
 	}
@@ -73,6 +73,24 @@ func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error
 func NewCustomAppClient(appName string, config *clients.Config, cResolver ConflictResolver) VBase {
 	cl := clients.CreateClient("vbase", config, true)
 	return &client{cl, appName, config.Workspace, cResolver, false}
+}
+
+type BaseClient struct {
+	WithContext func(ctx clients.IORequestContext, cResolver ConflictResolver) VBase
+}
+
+func NewBaseClient(opts clients.IOClientOptions) *BaseClient {
+	base := clients.CreateBaseInfraClient("vbase", opts)
+	appName := clients.UserAgentName(opts.UserAgent)
+	if appName == "" {
+		panic(clients.NewNoUserAgentError("User-Agent is missing to create a VBase client."))
+	}
+	return &BaseClient{
+		WithContext: func(ctx clients.IORequestContext, cResolver ConflictResolver) VBase {
+			cl := clients.WithContext(base, ctx)
+			return &client{cl, appName, ctx.Workspace, cResolver, false}
+		},
+	}
 }
 
 const (
@@ -275,49 +293,62 @@ func (cl *client) DeleteAllFiles(bucket string) error {
 	return err
 }
 
-func (cl *client) conflictHandler(bucket string) plugin.Plugin {
+type conflictResolverPlugin struct {
+	cl      *client
+	bucket  string
+	reqCopy *http.Request
+}
+
+func newConflictResolverPlugin(cl *client, bucket string) plugin.Plugin {
+	resolver := &conflictResolverPlugin{cl: cl, bucket: bucket}
 	p := plugin.New()
-	if cl.conflictResolver == nil || cl.resolvingConflicts || cl.workspace == clients.MasterWorkspace {
-		return p
-	}
-
-	var reqCopy *http.Request
 	p.SetHandlers(plugin.Handlers{
-		"request": func(c *context.Context, h context.Handler) {
-			c.Request.Header.Set("X-Vtex-Detect-Conflicts", "true")
-
-			var err error
-			reqCopy, err = copyRequest(c.Request)
-			if err != nil {
-				h.Error(c, err)
-				return
-			}
-
-			h.Next(c)
-		},
-		"after dial": func(c *context.Context, h context.Handler) {
-			if c.Response.StatusCode == http.StatusConflict {
-				if err := cl.resolveConflicts(bucket); err != nil {
-					h.Error(c, err)
-					return
-				}
-
-				// Retry
-				res, err := retryRequest(c.Client, reqCopy, bucket)
-				if res != nil {
-					c.Response = res
-				}
-				if err != nil {
-					h.Error(c, err)
-					return
-				}
-				res.Header.Set("X-Vtex-Solved-Conflicts", bucket)
-			}
-
-			h.Next(c)
-		},
+		"request":    resolver.Request,
+		"after dial": resolver.AfterDial,
 	})
 	return p
+}
+
+func (p *conflictResolverPlugin) Request(c *context.Context, h context.Handler) {
+	c.Request.Header.Set("X-Vtex-Detect-Conflicts", "true")
+
+	var err error
+	p.reqCopy, err = copyRequest(c.Request)
+	if err != nil {
+		h.Error(c, err)
+		return
+	}
+
+	h.Next(c)
+}
+
+func (p *conflictResolverPlugin) AfterDial(c *context.Context, h context.Handler) {
+	if c.Response.StatusCode != http.StatusConflict {
+		h.Next(c)
+	}
+
+	if err := p.cl.resolveConflicts(p.bucket); err != nil {
+		h.Error(c, err)
+		return
+	}
+
+	// Retry
+	res, err := retryRequest(c.Client, p.reqCopy, p.bucket)
+	if res != nil {
+		c.Response = res
+	}
+	if err != nil {
+		h.Error(c, err)
+		return
+	}
+	res.Header.Set("X-Vtex-Solved-Conflicts", p.bucket)
+}
+
+func (cl *client) conflictHandler(bucket string) plugin.Plugin {
+	if cl.conflictResolver == nil || cl.resolvingConflicts || cl.workspace == clients.MasterWorkspace {
+		return plugin.New()
+	}
+	return newConflictResolverPlugin(cl, bucket)
 }
 
 func copyRequest(req *http.Request) (*http.Request, error) {

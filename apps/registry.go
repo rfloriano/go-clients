@@ -24,13 +24,27 @@ type RegistryClient struct {
 
 // NewClient creates a new Registry client
 func NewRegistryClient(config *clients.Config) Registry {
-	if config.Workspace != "master" {
+	if config.Workspace != clients.MasterWorkspace {
 		configCopy := *config
-		configCopy.Workspace = "master"
+		configCopy.Workspace = clients.MasterWorkspace
 		config = &configCopy
 	}
 	cl := clients.CreateClient("apps", config, true)
 	return &RegistryClient{cl}
+}
+
+type RegistryBaseClient struct {
+	WithContext func(ctx clients.IORequestContext) Registry
+}
+
+func NewRegistryBaseClient(opts clients.IOClientOptions) *RegistryBaseClient {
+	base := clients.CreateBaseInfraClient("apps", opts)
+	return &RegistryBaseClient{
+		WithContext: func(ctx clients.IORequestContext) Registry {
+			ctx.Workspace = clients.MasterWorkspace
+			return &RegistryClient{clients.WithContext(base, ctx)}
+		},
+	}
 }
 
 const (

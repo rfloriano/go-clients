@@ -24,6 +24,19 @@ func NewClient(config *clients.Config) Workspaces {
 	return &Client{config.Account, cl}
 }
 
+type BaseClient struct {
+	WithContext func(ctx clients.IORequestContext) Workspaces
+}
+
+func NewBaseClient(opts clients.IOClientOptions) *BaseClient {
+	base := clients.CreateBaseInfraClient("kube-router", opts)
+	return &BaseClient{
+		WithContext: func(ctx clients.IORequestContext) Workspaces {
+			return &Client{ctx.Account, clients.WithContext(base, ctx)}
+		},
+	}
+}
+
 const (
 	accountPath   = "/%v"
 	workspacePath = "/%v/%v"

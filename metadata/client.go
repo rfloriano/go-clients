@@ -52,7 +52,7 @@ type client struct {
 // resolver is optional but if set, will be called for each detected conflict in
 // metadata access methods to attempt a resolution logic.
 func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, error) {
-	appName := clients.UserAgentName(config)
+	appName := clients.UserAgentName(config.UserAgent)
 	if appName == "" {
 		return nil, clients.NewNoUserAgentError("User-Agent is missing to create a Metadata client.")
 	}
@@ -62,6 +62,24 @@ func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, err
 func NewCustomAppClient(appName string, config *clients.Config, resolver ConflictResolver) Metadata {
 	cl := clients.CreateClient("kube-router", config, true)
 	return &client{cl, resolver, appName}
+}
+
+type BaseClient struct {
+	WithContext func(ctx clients.IORequestContext, cResolver ConflictResolver) Metadata
+}
+
+func NewBaseClient(opts clients.IOClientOptions) *BaseClient {
+	base := clients.CreateBaseInfraClient("kube-router", opts)
+	appName := clients.UserAgentName(opts.UserAgent)
+	if appName == "" {
+		panic(clients.NewNoUserAgentError("User-Agent is missing to create a Metadata client."))
+	}
+	return &BaseClient{
+		WithContext: func(ctx clients.IORequestContext, cResolver ConflictResolver) Metadata {
+			cl := clients.WithContext(base, ctx)
+			return &client{cl, cResolver, appName}
+		},
+	}
 }
 
 const (

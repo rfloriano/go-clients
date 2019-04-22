@@ -28,6 +28,19 @@ func NewClient(config *clients.Config) Colossus {
 	return &Client{cl}
 }
 
+type BaseClient struct {
+	WithContext func(ctx clients.IORequestContext) Colossus
+}
+
+func NewBaseClient(opts clients.IOClientOptions) *BaseClient {
+	base := clients.CreateBaseInfraClient("colossus", opts)
+	return &BaseClient{
+		WithContext: func(ctx clients.IORequestContext) Colossus {
+			return &Client{clients.WithContext(base, ctx)}
+		},
+	}
+}
+
 const (
 	eventPath = "/events/%v"
 	logPath   = "/logs/%v"

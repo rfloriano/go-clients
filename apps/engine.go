@@ -43,6 +43,19 @@ func NewAppsClient(config *clients.Config) Apps {
 	return &AppsClient{cl}
 }
 
+type EngineBaseClient struct {
+	WithContext func(ctx clients.IORequestContext) Apps
+}
+
+func NewEngineBaseClient(opts clients.IOClientOptions) *EngineBaseClient {
+	base := clients.CreateBaseInfraClient("apps", opts)
+	return &EngineBaseClient{
+		WithContext: func(ctx clients.IORequestContext) Apps {
+			return &AppsClient{clients.WithContext(base, ctx)}
+		},
+	}
+}
+
 const (
 	pathToDependencies = "/dependencies"
 	pathToRootApps     = "/apps"
