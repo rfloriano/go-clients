@@ -1,6 +1,7 @@
 package clients
 
 import (
+	goContext "context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -38,6 +39,7 @@ type Config struct {
 	AuthFunc  func() string
 	UserAgent string
 	Recorder  RequestRecorder
+	Context   goContext.Context
 	Timeout   time.Duration
 	Transport http.RoundTripper
 }
@@ -65,6 +67,9 @@ func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentl
 		Use(responseErrors())
 	if config.Recorder != nil {
 		cl = cl.Use(requestRecorder(config.Recorder))
+	}
+	if config.Context != nil && config.Context != goContext.Background() {
+		cl = cl.Use(contextBinder(config.Context))
 	}
 
 	if config.Endpoint != "" {
@@ -117,6 +122,28 @@ func responseErrors() plugin.Plugin {
 			Message:    descr.Message,
 		})
 	})
+}
+
+func contextBinder(ctx goContext.Context) plugin.Plugin {
+	return plugin.NewRequestPlugin(func(c *context.Context, h context.Handler) {
+		newCtx := ctx
+		if original := c.Request.Context(); original != goContext.Background() {
+			newCtx = linkedContext(original, newCtx)
+		}
+		c.Request = c.Request.WithContext(newCtx)
+	})
+}
+
+func linkedContext(ctx1, ctx2 goContext.Context) goContext.Context {
+	linked, cancel := goContext.WithCancel(goContext.Background())
+	go func() {
+		defer cancel()
+		select {
+		case <-ctx1.Done():
+		case <-ctx2.Done():
+		}
+	}()
+	return linked
 }
 
 func requestRecorder(recorder RequestRecorder) plugin.Plugin {
