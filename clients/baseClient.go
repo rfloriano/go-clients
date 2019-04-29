@@ -131,6 +131,7 @@ func contextBinder(ctx goContext.Context) plugin.Plugin {
 			newCtx = linkedContext(original, newCtx)
 		}
 		c.Request = c.Request.WithContext(newCtx)
+		h.Next(c)
 	})
 }
 
