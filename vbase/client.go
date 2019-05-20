@@ -16,6 +16,8 @@ import (
 	"gopkg.in/h2non/gentleman.v1/plugin"
 )
 
+const HeaderContentType = "Content-Type"
+
 type Options struct {
 	Prefix string
 	Marker string
@@ -30,8 +32,8 @@ type SaveFileOptions struct {
 
 // VBase is an interface for interacting with VBase
 type VBase interface {
-	GetFile(bucket, path string) (*gentleman.Response, string, error)
-	GetJSON(bucket, path string, data interface{}) (string, error)
+	GetFile(bucket, path string) (file io.ReadCloser, contentType string, err error)
+	GetJSON(bucket, path string, data interface{}) (eTag string, err error)
 	ListFiles(bucket string, options *Options) (*FileListResponse, string, error)
 	ListAllFiles(bucket, prefix string) (*FileListResponse, string, error)
 
@@ -100,29 +102,34 @@ func (cl *client) GetBucket(bucket string) (*BucketResponse, string, error) {
 
 // GetJSON populates data with the content of the specified file, assuming it is serialized as JSON
 func (cl *client) GetJSON(bucket, path string, data interface{}) (string, error) {
-	res, etag, err := cl.GetFile(bucket, path)
+	res, _, err := cl.getFileInternal(bucket, path)
 	if err != nil {
 		return "", err
 	}
+	defer res.Close()
 
 	if err := res.JSON(data); err != nil {
 		return "", err
 	}
 
-	return etag, nil
+	return res.Header.Get(clients.HeaderETag), nil
 }
 
 // GetFile gets a file's content as a read closer
-func (cl *client) GetFile(bucket, path string) (*gentleman.Response, string, error) {
+func (cl *client) GetFile(bucket, path string) (io.ReadCloser, string, error) {
+	return cl.getFileInternal(bucket, path)
+}
+
+func (cl *client) getFileInternal(bucket, path string) (*gentleman.Response, string, error) {
 	res, err := cl.http.Get().
 		AddPath(fmt.Sprintf(pathToFile, cl.appName, bucket, path)).
 		Use(cl.conflictHandler(bucket)).
 		Send()
 	if err != nil {
-		return nil, res.Header.Get(clients.HeaderETag), err
+		return nil, res.Header.Get(HeaderContentType), err
 	}
 
-	return res, res.Header.Get(clients.HeaderETag), nil
+	return res, res.Header.Get(HeaderContentType), nil
 }
 
 // SaveJSON saves generic data serializing it to JSON
