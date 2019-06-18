@@ -88,8 +88,8 @@ func CreateClient(service string, config *Config, workspaceBound bool) *gentlema
 	return withContextCompat(base, config, workspaceBound)
 }
 
-func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentleman.Client {
-	base := CreateBaseClient(url, config.ClientOptions)
+func CreateGenericClient(baseURL string, config *Config, workspaceBound bool) *gentleman.Client {
+	base := CreateBaseClient(baseURL, config.ClientOptions)
 	return withContextCompat(base, config, workspaceBound)
 }
 

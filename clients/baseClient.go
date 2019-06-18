@@ -22,7 +22,7 @@ type ClientOptions struct {
 	Transport http.RoundTripper
 }
 
-func CreateBaseClient(url string, opts ClientOptions) *gentleman.Client {
+func CreateBaseClient(baseURL string, opts ClientOptions) *gentleman.Client {
 	if opts.Timeout <= 0 {
 		opts.Timeout = 5 * time.Second
 	}
@@ -32,8 +32,8 @@ func CreateBaseClient(url string, opts ClientOptions) *gentleman.Client {
 		Use(timeout.Request(opts.Timeout)).
 		Use(responseErrors())
 
-	if url != "" {
-		cl.URL(url)
+	if baseURL != "" {
+		cl.BaseURL(baseURL)
 	}
 	if opts.AuthFunc != nil {
 		cl.UseRequest(func(ctx *context.Context, h context.Handler) {
