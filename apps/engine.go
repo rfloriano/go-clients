@@ -21,7 +21,7 @@ type Apps interface {
 	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
 	LegacyGetDependencies() (map[string][]string, string, error)
 	LegacyGetRootApps() (*RootAppList, error)
-	GetSimulatedState(appToSimulateInstall InstallRequest, opt ListAppsOptions) ([]*ActiveApp, error)
+	SimulateInstallApp(appToSimulateInstall InstallRequest, fields ...string) ([]*ActiveApp, error)
 }
 
 // Use `Fields` to specify which data should contain on apps list.
@@ -145,12 +145,15 @@ func (cl *AppsClient) ListApps(opt ListAppsOptions) ([]*ActiveApp, string, error
 	return apps.Apps, res.Header.Get(clients.HeaderETag), nil
 }
 
-func (cl *AppsClient) GetSimulatedState(appToSimulateInstall InstallRequest, opt ListAppsOptions) ([]*ActiveApp, error) {
+func (cl *AppsClient) SimulateInstallApp(appToSimulateInstall InstallRequest, fields ...string) ([]*ActiveApp, error) {
 	req := cl.http.Post().
-		AddPath(pathToSimulateInstall)
-	req = req.AddQuery("dry", "true")
-	req = addQueriesToAppsRequest(opt, req)
-	req = req.JSON(appToSimulateInstall)
+		AddPath(pathToSimulateInstall).
+		AddQuery("dry", "true").
+		JSON(appToSimulateInstall)
+
+	if len(fields) > 0 {
+		req = req.AddQuery("fields", strings.Join(fields, ","))
+	}
 
 	res, err := req.Send()
 	if err != nil {
