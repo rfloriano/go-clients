@@ -78,3 +78,9 @@ type PolicyDeclaration struct {
 	Reason string            `json:"reason,omitempty"`
 	Attrs  map[string]string `json:"attrs,omitempty"`
 }
+
+type InstallRequest struct {
+	ID       string      `json:"id"`
+	Registry string      `json:"registry"`
+	Settings interface{} `json:"settings"`
+}
