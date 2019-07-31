@@ -21,6 +21,7 @@ type Apps interface {
 	GetBundle(app, parentID, rootFolder string) (io.ReadCloser, string, error)
 	LegacyGetDependencies() (map[string][]string, string, error)
 	LegacyGetRootApps() (*RootAppList, error)
+	GetSimulatedState(appToSimulateInstall InstallRequest, opt ListAppsOptions) ([]*ActiveApp, error)
 }
 
 // Use `Fields` to specify which data should contain on apps list.
@@ -44,13 +45,14 @@ func NewAppsClient(config *clients.Config) Apps {
 }
 
 const (
-	pathToDependencies = "/dependencies"
-	pathToRootApps     = "/apps"
-	pathToListApps     = "/v2/apps"
-	pathToApp          = "/apps/%v"
-	pathToFiles        = "/apps/%v/files"
-	pathToFile         = "/apps/%v/files/%v"
-	pathToBundle       = "/apps/%v/bundle/%v"
+	pathToDependencies    = "/dependencies"
+	pathToRootApps        = "/apps"
+	pathToListApps        = "/v2/apps"
+	pathToApp             = "/apps/%v"
+	pathToFiles           = "/apps/%v/files"
+	pathToFile            = "/apps/%v/files/%v"
+	pathToBundle          = "/apps/%v/bundle/%v"
+	pathToSimulateInstall = "/apps"
 )
 
 // GetApp describes an installed app's manifest
@@ -141,6 +143,26 @@ func (cl *AppsClient) ListApps(opt ListAppsOptions) ([]*ActiveApp, string, error
 	}
 
 	return apps.Apps, res.Header.Get(clients.HeaderETag), nil
+}
+
+func (cl *AppsClient) GetSimulatedState(appToSimulateInstall InstallRequest, opt ListAppsOptions) ([]*ActiveApp, error) {
+	req := cl.http.Post().
+		AddPath(pathToSimulateInstall)
+	req = req.AddQuery("dry", "true")
+	req = addQueriesToAppsRequest(opt, req)
+	req = req.JSON(appToSimulateInstall)
+
+	res, err := req.Send()
+	if err != nil {
+		return nil, err
+	}
+
+	var workspaceState AppList
+	if err := res.JSON(&workspaceState); err != nil {
+		return nil, err
+	}
+
+	return workspaceState.Apps, nil
 }
 
 func addQueriesToAppsRequest(opt ListAppsOptions, req *gentleman.Request) *gentleman.Request {
