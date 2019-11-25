@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/vtex/go-io/ioext"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func NewVBaseChronos() vbase.VBaseChronos {
-	return &fakeChronosVbase{
+	return &fakeVbaseChronos{
 		buckets: map[string]*vbaseBucket{},
 	}
 }
@@ -23,7 +24,7 @@ type fakeVbaseChronos struct {
 	buckets map[string]*vbaseBucket
 }
 
-func (r *fakeVbaseChronos) GetJSON(bucket, path string, data interface{}) (string, error) {
+func (r *fakeVbaseChronos) GetJSON(bucket, path string, date *time.Time, data interface{}) (string, error) {
 	r.Lock()
 	defer r.Unlock()
 
