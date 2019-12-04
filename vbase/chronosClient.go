@@ -17,21 +17,16 @@ type VBaseChronos interface {
 	DeleteFile(bucket, path string) error
 }
 
-type ChronosConflictResolver interface {
-	Resolve(client VBaseChronos, bucket string) (resolved bool, err error)
-}
-
 type clientChronos struct {
 	http               *gentleman.Client
 	appName            string
 	workspace          string
-	conflictResolver   ChronosConflictResolver
 	resolvingConflicts bool
 }
 
-func NewCustomAppClientChronos(appName string, config *clients.Config, cResolver ChronosConflictResolver) VBaseChronos {
+func NewCustomAppClientChronos(appName string, config *clients.Config) VBaseChronos {
 	cl := clients.CreateClient("vbase", config, true)
-	return &clientChronos{cl, appName, config.Workspace, cResolver, false}
+	return &clientChronos{cl, appName, config.Workspace, false}
 }
 
 const (
