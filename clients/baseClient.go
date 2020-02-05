@@ -45,14 +45,15 @@ type Config struct {
 }
 
 func CreateAppClient(vendor, name string, config *Config) *gentleman.Client {
-	return CreateGenericClient(appEndpoint(vendor, name, config.Region), config, true)
+	return CreateGenericClient(appEndpoint(vendor, name, config.Region), config, true, "")
 }
 
 func CreateClient(service string, config *Config, workspaceBound bool) *gentleman.Client {
-	return CreateGenericClient(infraEndpoint(service, config.Region), config, workspaceBound)
+	baseURL, pathURL := infraEndpoint(service, config.Region)
+	return CreateGenericClient(baseURL, config, workspaceBound, pathURL)
 }
 
-func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentleman.Client {
+func CreateGenericClient(url string, config *Config, workspaceBound bool, pathURL string) *gentleman.Client {
 	if config == nil {
 		panic("config cannot be <nil>")
 	}
@@ -78,7 +79,7 @@ func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentl
 		cl = cl.URL(url)
 	}
 
-	if path := basePath(config, workspaceBound); path != "" {
+	if path := basePath(config, workspaceBound, pathURL); path != "" {
 		cl = cl.Path(path)
 	}
 
@@ -183,16 +184,24 @@ func appEndpoint(vendor, name, region string) string {
 	return fmt.Sprintf("http://%s.%s.%s.vtex.io", name, vendor, region)
 }
 
-func infraEndpoint(service, region string) string {
-	return fmt.Sprintf("http://%s.%s.vtex.io", service, region)
+func infraEndpoint(service, region string) (string, string) {
+	if idSplit := strings.Split(service, "@"); len(idSplit) == 2 {
+		serviceName, serviceMajor := idSplit[0], idSplit[1]
+		return "http://infra.io.vtex.com", fmt.Sprintf("%s/v%s", serviceName, serviceMajor)
+	}
+	return fmt.Sprintf("http://%s.%s.vtex.io", service, region), ""
 }
 
-func basePath(config *Config, workspaceBound bool) string {
+func basePath(config *Config, workspaceBound bool, pathURL string) string {
+	path := ""
+	if pathURL != "" {
+		path = "/" + pathURL
+	}
 	if workspaceBound {
-		return "/" + config.Account + "/" + config.Workspace
+		path = path + "/" + config.Account + "/" + config.Workspace
 	}
 
-	return ""
+	return path
 }
 
 func UserAgentName(config *Config) string {

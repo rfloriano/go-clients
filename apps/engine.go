@@ -40,7 +40,7 @@ type AppsClient struct {
 
 // NewClient creates a new Apps client
 func NewAppsClient(config *clients.Config) Apps {
-	cl := clients.CreateClient("apps", config, true)
+	cl := clients.CreateClient("apps@0", config, true)
 	return &AppsClient{cl}
 }
 
