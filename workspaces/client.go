@@ -20,7 +20,7 @@ type Client struct {
 }
 
 func NewClient(config *clients.Config) Workspaces {
-	cl := clients.CreateClient("kube-router", config, false)
+	cl := clients.CreatePlatformClient(config)
 	return &Client{config.Account, cl}
 }
 

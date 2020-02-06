@@ -1,8 +1,6 @@
 package auth
 
 import (
-	"fmt"
-
 	"github.com/vtex/go-clients/clients"
 	"github.com/vtex/go-clients/common"
 
@@ -22,7 +20,7 @@ type Client struct {
 }
 
 func NewAuthEngineClient(config *clients.Config) AuthEngine {
-	cl := clients.CreateGenericClient(fmt.Sprintf("http://authorization-engine.vtex.com"), config, false)
+	cl := clients.CreateExternalClient("http://authorization-engine.vtex.com", config)
 	return &Client{cl}
 }
 

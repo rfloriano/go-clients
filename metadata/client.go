@@ -60,7 +60,7 @@ func NewClient(config *clients.Config, resolver ConflictResolver) (Metadata, err
 }
 
 func NewCustomAppClient(appName string, config *clients.Config, resolver ConflictResolver) Metadata {
-	cl := clients.CreateClient("kube-router", config, true)
+	cl := clients.CreatePlatformClient(config)
 	return &client{cl, resolver, appName}
 }
 

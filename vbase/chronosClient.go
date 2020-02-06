@@ -25,7 +25,7 @@ type clientChronos struct {
 }
 
 func NewCustomAppClientChronos(appName string, config *clients.Config) VBaseChronos {
-	cl := clients.CreateClient("vbase", config, true)
+	cl := clients.CreateInfraClient(&vbaseService, config)
 	return &clientChronos{cl, appName, config.Workspace, false}
 }
 

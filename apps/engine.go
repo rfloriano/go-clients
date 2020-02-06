@@ -38,9 +38,15 @@ type AppsClient struct {
 	http *gentleman.Client
 }
 
+const (
+	appsMajor = 0
+)
+
+var appsService = clients.Service{Name: "apps", Major: appsMajor}
+
 // NewClient creates a new Apps client
 func NewAppsClient(config *clients.Config) Apps {
-	cl := clients.CreateClient("apps", config, true)
+	cl := clients.CreateInfraClient(&appsService, config)
 	return &AppsClient{cl}
 }
 

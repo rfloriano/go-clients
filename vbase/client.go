@@ -70,8 +70,10 @@ func NewClient(config *clients.Config, cResolver ConflictResolver) (VBase, error
 	return NewCustomAppClient(appName, config, cResolver), nil
 }
 
+var vbaseService = clients.Service{Name: "vbase", Major: 2}
+
 func NewCustomAppClient(appName string, config *clients.Config, cResolver ConflictResolver) VBase {
-	cl := clients.CreateClient("vbase", config, true)
+	cl := clients.CreateInfraClient(&vbaseService, config)
 	return &client{cl, appName, config.Workspace, cResolver, false}
 }
 
