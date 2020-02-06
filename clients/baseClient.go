@@ -25,6 +25,15 @@ const (
 	startTimeKey    = "startTime"
 )
 
+type ClientType int
+
+const (
+	AppClient = iota
+	InfraClient
+	PlatformClient
+	ExternalClient
+)
+
 type RequestRecorder interface {
 	BeforeDial(req *http.Request)
 	Record(req *http.Request, res *http.Response, responseTime time.Duration)
@@ -44,15 +53,29 @@ type Config struct {
 	Transport http.RoundTripper
 }
 
-func CreateAppClient(vendor, name string, config *Config) *gentleman.Client {
-	return CreateGenericClient(appEndpoint(vendor, name, config.Region), config, true)
+type Service struct {
+	Name   string
+	Vendor string
+	Major  int
 }
 
-func CreateClient(service string, config *Config, workspaceBound bool) *gentleman.Client {
-	return CreateGenericClient(infraEndpoint(service, config.Region), config, workspaceBound)
+func CreateAppClient(service *Service, major int, config *Config) *gentleman.Client {
+	return CreateGenericClient("http://app.io.vtex.com", service, config, AppClient)
 }
 
-func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentleman.Client {
+func CreateInfraClient(service *Service, config *Config) *gentleman.Client {
+	return CreateGenericClient("http://infra.io.vtex.com", service, config, InfraClient)
+}
+
+func CreatePlatformClient(config *Config) *gentleman.Client {
+	return CreateGenericClient("http://platform.io.vtex.com", nil, config, PlatformClient)
+}
+
+func CreateExternalClient(url string, config *Config) *gentleman.Client {
+	return CreateGenericClient(url, nil, config, ExternalClient)
+}
+
+func CreateGenericClient(url string, service *Service, config *Config, clientType ClientType) *gentleman.Client {
 	if config == nil {
 		panic("config cannot be <nil>")
 	}
@@ -78,7 +101,7 @@ func CreateGenericClient(url string, config *Config, workspaceBound bool) *gentl
 		cl = cl.URL(url)
 	}
 
-	if path := basePath(config, workspaceBound); path != "" {
+	if path := basePath(service, config, clientType); path != "" {
 		cl = cl.Path(path)
 	}
 
@@ -179,20 +202,15 @@ func recordResponse(recorder RequestRecorder, c *context.Context) {
 	}
 }
 
-func appEndpoint(vendor, name, region string) string {
-	return fmt.Sprintf("http://%s.%s.%s.vtex.io", name, vendor, region)
-}
-
-func infraEndpoint(service, region string) string {
-	return fmt.Sprintf("http://%s.%s.vtex.io", service, region)
-}
-
-func basePath(config *Config, workspaceBound bool) string {
-	if workspaceBound {
+func basePath(service *Service, config *Config, clientType ClientType) string {
+	switch clientType {
+	case AppClient, InfraClient:
+		return fmt.Sprintf("/%s/v%d/%s/%s", service.Name, service.Major, config.Account, config.Workspace)
+	case PlatformClient:
 		return "/" + config.Account + "/" + config.Workspace
+	default:
+		return ""
 	}
-
-	return ""
 }
 
 func UserAgentName(config *Config) string {
