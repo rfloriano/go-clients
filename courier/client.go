@@ -17,8 +17,10 @@ type Client struct {
 	http *gentleman.Client
 }
 
+var courierService = clients.Service{Name: "courier", Major: 0}
+
 func NewClient(config *clients.Config) Courier {
-	cl := clients.CreateClient("courier", config, true)
+	cl := clients.CreateInfraClient(&courierService, config)
 	return &Client{cl}
 }
 

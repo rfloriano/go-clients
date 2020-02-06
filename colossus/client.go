@@ -23,8 +23,10 @@ type Client struct {
 	http *gentleman.Client
 }
 
+var colossusService = clients.Service{Name: "colossus", Major: 0}
+
 func NewClient(config *clients.Config) Colossus {
-	cl := clients.CreateClient("colossus", config, true)
+	cl := clients.CreateInfraClient(&colossusService, config)
 	return &Client{cl}
 }
 

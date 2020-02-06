@@ -23,8 +23,10 @@ type Client struct {
 	http *gentleman.Client
 }
 
+var sphinxService = clients.Service{Name: "sphinx", Major: 0}
+
 func NewSphinxClient(config *clients.Config) Sphinx {
-	cl := clients.CreateClient("sphinx", config, true)
+	cl := clients.CreateInfraClient(&sphinxService, config)
 	return &Client{cl}
 }
 

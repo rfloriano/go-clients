@@ -29,7 +29,7 @@ func NewRegistryClient(config *clients.Config) Registry {
 		configCopy.Workspace = "master"
 		config = &configCopy
 	}
-	cl := clients.CreateClient("apps", config, true)
+	cl := clients.CreateInfraClient(&appsService, config)
 	return &RegistryClient{cl}
 }
 
